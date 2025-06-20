@@ -80,6 +80,8 @@ elseif(ROOT_ARCHITECTURE MATCHES riscv64)
   set(ROOT_CLING_TARGET "RISCV")
 elseif(ROOT_ARCHITECTURE MATCHES loong64)
   set(ROOT_CLING_TARGET "LoongArch")
+elseif(ROOT_ARCHITECTURE MATCHES Elbrus OR ROOT_ARCHITECTURE MATCHES e2k OR ROOT_ARCHITECTURE MATCHES linuxe2k)
+  set(ROOT_CLING_TARGET "Elbrus")
 elseif(ROOT_ARCHITECTURE MATCHES freebsd OR ROOT_ARCHITECTURE MATCHES linux OR ROOT_ARCHITECTURE MATCHES macosx)
   set(ROOT_CLING_TARGET "X86")
 elseif(ROOT_ARCHITECTURE MATCHES win32 OR ROOT_ARCHITECTURE MATCHES win64)
@@ -184,7 +186,9 @@ if(builtin_llvm)
   # Regardless of LLVM_BUILD_TYPE and LLVM_ENABLE_ASSERTIONS, we never want to
   # "optimize llvm_unreachable() as undefined behavior" but trap if we hit this
   # in production builds.
+if(NOT LLVM_TARGET_ARCH STREQUAL e2k)
   set(LLVM_UNREACHABLE_OPTIMIZE FALSE)
+endif()
 
   # Multi-configuration generators ignore CMAKE_BUILD_TYPE, so
   # in that case we set the flags for all configurations to the
