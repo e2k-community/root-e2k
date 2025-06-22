@@ -1866,9 +1866,9 @@ endif (roofit_multiprocess)
 if (testing OR testsupport)
   if (NOT builtin_gtest)
     if(fail-on-missing)
-      find_package(GTest REQUIRED)
+      find_package(GTest 1.10 REQUIRED)
     else()
-      find_package(GTest)
+      find_package(GTest 1.10)
       if(NOT GTEST_FOUND)
         ROOT_CHECK_CONNECTION("testing=OFF")
         if(NO_CONNECTION)
@@ -2101,6 +2101,24 @@ if(NOT ROOT_HAVE_CXX_ATOMICS_WITHOUT_LIB)
   mark_as_advanced(ROOT_ATOMIC_LIB)
   if(ROOT_ATOMIC_LIB)
     set(ROOT_ATOMIC_LIBS ${ROOT_ATOMIC_LIB})
+  endif()
+endif()
+
+#------------------------------------------------------------------------------------
+# Check if we need to link -lstdc++fs to use <filesystem> (libstdc++ 8 and older).
+set(_filesystem_source "
+#include <filesystem>
+int main(void) {
+   std::filesystem::path p = \"path\";
+   return 0;
+}
+")
+check_cxx_source_compiles("${_filesystem_source}" ROOT_HAVE_NATIVE_CXX_FILESYSTEM)
+if(NOT ROOT_HAVE_NATIVE_CXX_FILESYSTEM)
+  set(CMAKE_REQUIRED_LIBRARIES stdc++fs)
+  check_cxx_source_compiles("${_filesystem_source}" ROOT_NEED_STDCXXFS)
+  if(NOT ROOT_NEED_STDCXXFS)
+    message(FATAL_ERROR "Could not determine how to use C++17 <filesystem>")
   endif()
 endif()
 
