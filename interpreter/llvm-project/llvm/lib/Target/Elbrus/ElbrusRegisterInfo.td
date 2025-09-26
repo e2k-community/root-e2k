@@ -28,9 +28,26 @@ def R0 : E2KReg<"r0">;
 // implicitly defined to be the register allocation order.
 //
 
+def GR8  : RegisterClass<"Elbrus", [i8], 8,
+                         (add R0)>;
+
+def GR16 : RegisterClass<"Elbrus", [i16], 16,
+                         (add R0)>;
+
 def GR32 : RegisterClass<"Elbrus", [i32], 32,
                          (add R0)>;
 
 def GR64 : RegisterClass<"Elbrus", [i64], 64,
                          (add R0)>;
+
+def GR128 : RegisterClass<"Elbrus", [v4f32, v2f64, v16i8, v8i16, v4i32, v2i64, f128],
+                          128, (add R0)>;
+
+def GR80  : RegisterClass<"Elbrus", [f80], 32, (add R0)>;
+
+def GR256 : RegisterClass<"Elbrus", [v8f32, v4f64, v32i8, v16i16, v8i32, v4i64],
+                          256, (add R0)>;
+
+def GR512 : RegisterClass<"Elbrus", [v16f32, v8f64, v64i8, v32i16, v16i32, v8i64],
+                          512, (add R0)>;
 

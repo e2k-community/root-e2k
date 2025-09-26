@@ -297,7 +297,9 @@ void LLVMAddGlobalMapping(LLVMExecutionEngineRef EE, LLVMValueRef Global,
 void *LLVMGetPointerToGlobal(LLVMExecutionEngineRef EE, LLVMValueRef Global) {
   unwrap(EE)->finalizeObject();
 
-  return unwrap(EE)->getPointerToGlobal(unwrap<GlobalValue>(Global));
+  void *addr = unwrap(EE)->getPointerToGlobal(unwrap<GlobalValue>(Global));
+  //fprintf( stdout, "LLVMJIT:LLVMGetPointerToGlobal: %p\n", addr);
+  return addr;
 }
 
 uint64_t LLVMGetGlobalValueAddress(LLVMExecutionEngineRef EE, const char *Name) {

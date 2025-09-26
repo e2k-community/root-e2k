@@ -531,7 +531,7 @@ std::string tools::getCPUName(const Driver &D, const ArgList &Args,
   case llvm::Triple::e2k32:
   case llvm::Triple::e2k64:
   case llvm::Triple::e2k128:
-    return elbrus::getElbrusTargetCPU(Args);
+    return elbrus::getElbrusTargetCPU(Args, T);
 
   case llvm::Triple::aarch64:
   case llvm::Triple::aarch64_32:

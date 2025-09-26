@@ -91,6 +91,9 @@ bool FunctionAnalysisManagerModuleProxy::Result::invalidate(
   return false;
 }
 
+#define DUMP_PASS_DISSABLE
+
+#ifndef DUMP_PASS_DISSABLE
 static thread_local int DumpModuleIdent = 0;
 static thread_local std::vector<int> DumpModuleIdents;
 
@@ -192,8 +195,10 @@ dumpPassName( const StringRef &PN, const char *irtype, bool isbefore) {
 
     return (r);
 }
+#endif // !DUMP_PASS_DISSABLE
 
 void detail::PassDumper<Module>::dumpPass( const StringRef &PN, Module &IR, bool isbefore) {
+#ifndef DUMP_PASS_DISSABLE
     std::string fname = dumpPassName( PN, "module", isbefore);
 
     if ( !fname.empty() ) {
@@ -208,9 +213,11 @@ void detail::PassDumper<Module>::dumpPass( const StringRef &PN, Module &IR, bool
         delete fs;
         dbgs() << "dump module pass : " << fname << "\n";
     }
+#endif // !DUMP_PASS_DISSABLE
 }
 
 void detail::PassDumper<Function>::dumpPass( const StringRef &PN, Function &IR, bool isbefore) {
+#ifndef DUMP_PASS_DISSABLE
     std::string fname = dumpPassName( PN, "function", isbefore);
 
     if ( !fname.empty() ) {
@@ -225,9 +232,11 @@ void detail::PassDumper<Function>::dumpPass( const StringRef &PN, Function &IR, 
         delete fs;
         dbgs() << "dump function pass : " << fname << "\n";
     }
+#endif // !DUMP_PASS_DISSABLE
 }
 
 void detail::PassDumper<MachineFunction>::dumpPass( const StringRef &PN, MachineFunction &IR, bool isbefore) {
+#ifndef DUMP_PASS_DISSABLE
     std::string fname = dumpPassName( PN, "machinefunction", isbefore);
 
     if ( !fname.empty() ) {
@@ -244,6 +253,7 @@ void detail::PassDumper<MachineFunction>::dumpPass( const StringRef &PN, Machine
         delete fs;
         dbgs() << "dump function pass : " << fname << "\n";
     }
+#endif // !DUMP_PASS_DISSABLE
 }
 
 } // namespace llvm

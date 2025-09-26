@@ -68,6 +68,9 @@ const Target *TargetRegistry::lookupTarget(StringRef TT, std::string &Error) {
   auto ArchMatch = [&](const Target &T) { return T.ArchMatchFn(Arch); };
   auto I = find_if(targets(), ArchMatch);
 
+  for ( Target *TI = FirstTarget; TI; TI = TI->Next ) {
+  }
+
   if (I == targets().end()) {
     Error = ("No available targets are compatible with triple \"" + TT + "\"")
                 .str();

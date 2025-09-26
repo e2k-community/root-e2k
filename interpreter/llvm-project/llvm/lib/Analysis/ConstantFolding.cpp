@@ -1745,62 +1745,90 @@ typedef struct
 #endif /* HAVE_FENV_H */
 } llvm_fenv_flags_t;
 
-/// Clear the floating-point exception state.
-inline void llvm_fenv_clearexcept( llvm_fenv_flags_t *feflags) {
+/// Get the floating-point exception state.
+inline void llvm_fenv_getexceptflag( llvm_fenv_flags_t *feflags) {
 #if defined(HAVE_FENV_H)
+#if HAVE_DECL_FE_ALL_EXCEPT
   fegetexceptflag(&feflags->flags, FE_ALL_EXCEPT);
+#else /* !HAVE_DECL_FE_ALL_EXCEPT */
+  memset( feflags, 0, sizeof( feflags[0]));
+#endif /* HAVE_DECL_FE_ALL_EXCEPT */
+#endif
+}
+
+/// Set the floating-point exception state.
+inline void llvm_fenv_setexceptflag( llvm_fenv_flags_t *feflags) {
+#if defined(HAVE_FENV_H)
+#if HAVE_DECL_FE_ALL_EXCEPT
+  fesetexceptflag(&feflags->flags, FE_ALL_EXCEPT);
+#endif /* HAVE_DECL_FE_ALL_EXCEPT */
+#endif
+}
+
+/// Clear the floating-point exception state.
+inline void llvm_fenv_clearexcept() {
+#ifndef LLVM_WITH_LCCRT
+#if defined(HAVE_FENV_H)
 #if HAVE_DECL_FE_ALL_EXCEPT
   feclearexcept(FE_ALL_EXCEPT);
 #endif /* HAVE_DECL_FE_ALL_EXCEPT */
 #endif
+#endif /* !LLVM_WITH_LCCRT */
   errno = 0;
 }
 
 /// Test if a floating-point exception was raised.
-inline bool llvm_fenv_testexcept( llvm_fenv_flags_t *feflags) {
+inline bool llvm_fenv_testexcept() {
   int errno_val = errno;
   if (errno_val == ERANGE || errno_val == EDOM)
     return true;
+#ifndef LLVM_WITH_LCCRT
 #if defined(HAVE_FENV_H)
   bool feval = false;
 #if HAVE_DECL_FE_ALL_EXCEPT && HAVE_DECL_FE_INEXACT
   feval = fetestexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
 #endif /* HAVE_DECL_FE_ALL_EXCEPT && HAVE_DECL_FE_INEXACT */
-  fesetexceptflag(&feflags->flags, FE_ALL_EXCEPT);
   if (feval)
     return true;
 #endif
+#endif /* !LLVM_WITH_LCCRT */
   return false;
 }
 
 Constant *ConstantFoldFP(double (*NativeFP)(double), const APFloat &V,
                          Type *Ty) {
-  return nullptr;
-#if 0
+  llvm_fenv_flags_t feflags;
+
+  llvm_fenv_getexceptflag( &feflags);
   llvm_fenv_clearexcept();
   double Result = NativeFP(V.convertToDouble());
   if (llvm_fenv_testexcept()) {
     llvm_fenv_clearexcept();
+    llvm_fenv_setexceptflag( &feflags);
     return nullptr;
+  } else {
+    llvm_fenv_setexceptflag( &feflags);
   }
 
   return GetConstantFoldFPValue(Result, Ty);
-#endif
 }
 
 Constant *ConstantFoldBinaryFP(double (*NativeFP)(double, double),
                                const APFloat &V, const APFloat &W, Type *Ty) {
-  return nullptr;
-#if 0
+  llvm_fenv_flags_t feflags;
+
+  llvm_fenv_getexceptflag( &feflags);
   llvm_fenv_clearexcept();
   double Result = NativeFP(V.convertToDouble(), W.convertToDouble());
   if (llvm_fenv_testexcept()) {
     llvm_fenv_clearexcept();
+    llvm_fenv_setexceptflag( &feflags);
     return nullptr;
+  } else {
+    llvm_fenv_setexceptflag( &feflags);
   }
 
   return GetConstantFoldFPValue(Result, Ty);
-#endif
 }
 
 Constant *constantFoldVectorReduce(Intrinsic::ID IID, Constant *Op) {

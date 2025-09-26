@@ -76,6 +76,12 @@ ObjectFile::createELFObjectFile(MemoryBufferRef Obj, bool InitContent) {
       1ULL << llvm::countr_zero(
           reinterpret_cast<uintptr_t>(Obj.getBufferStart()));
 
+#if 0
+  fprintf( stdout, "LLVMJIT::createELFObjectFile: %p %p %jd\n",
+           Obj.getBufferStart(), Obj.getBufferEnd(), Obj.getBufferEnd() - Obj.getBufferStart());
+  fflush( stdout);
+#endif
+
   if (MaxAlignment < 2)
     return createError("Insufficient alignment");
 

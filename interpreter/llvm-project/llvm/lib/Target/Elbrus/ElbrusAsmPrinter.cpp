@@ -58,3 +58,7 @@ LLVMInitializeElbrusAsmPrinter()
     return;
 }
 
+extern "C" LLVM_EXTERNAL_VISIBILITY void
+LLVMInitializeElbrusAsmParser() {
+    // TODO:
+}

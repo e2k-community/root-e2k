@@ -844,7 +844,7 @@ void Parser::HandlePragmaRedefineExtname() {
                                      RedefNameLoc, AliasNameLoc);
 }
 
-StmtResult Parser::HandlePragmaAsmInline() {
+StmtResult Parser::HandlePragmaAsmInline( bool &msAsm) {
   StmtResult r;
 
   assert(Tok.is(tok::annot_pragma_asm_inline));
@@ -853,16 +853,12 @@ StmtResult Parser::HandlePragmaAsmInline() {
       Diag(Tok, diag::err_pragma_asm_call_position) << "asm_inline";
       r = StmtError();
   } else {
-      if ( 0 ) {
-          bool msAsm = false;
+      AsmStmt *asmv = 0;
 
-          r = ParseAsmStatement( msAsm);
-          r = Actions.ActOnFinishFullStmt( r.get());
-          if ( !msAsm ) {
-              r = StmtError();
-          }
-      } else {
-          r = StmtEmpty();
+      r = ParseAsmStatement( msAsm);
+      asmv = dyn_cast<AsmStmt>( r.get());
+      if ( asmv ) {
+          asmv->setAsmInline( true);
       }
   }
 
@@ -2373,7 +2369,7 @@ void PragmaAsmInlineHandler::HandlePragma(Preprocessor &PP,
     return;
   }
 
-  //Actions.ActOnPragmaAsmInline(AsmInlineTok, AsmInlineTok.getLocation());
+  Actions.ActOnPragmaAsmInline(AsmInlineTok, AsmInlineTok.getLocation());
 
   // Generate the hint token.
   auto TokenArray = std::make_unique<Token[]>(1);

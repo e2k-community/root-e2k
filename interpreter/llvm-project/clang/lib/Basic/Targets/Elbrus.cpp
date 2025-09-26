@@ -49,6 +49,7 @@ IntrinFile_t IntrinFiles[] = {
     {"clflushoptintrin.h", "clflushoptintrin_h__"},
     {"clwbintrin.h",       "clwbintrin_h__"},
     {"clzerointrin.h",     "clzerointrin_h__"},
+    {"cpuid.h",            "cpuid_h__"},
     {"e2kbuiltin.h",       "e2kbuiltin_h__"},
     {"e2kintrin.h",        "e2kintrin_h__"},
     {"emmintrin.h",        "emmintrin_h__"},
@@ -119,14 +120,7 @@ ElbrusTargetInfo::getTargetDefines( const LangOptions &Opts,
     Builder.defineMacro( "__LCC_MAS_CLEARTAG", "((int)0x40000000)");
     Builder.defineMacro( "__LCC_CHAN_ANY", "(-1)");
 
-    if ( (CPU == "elbrus-v2") ) {
-        iset = 2;
-        Builder.defineMacro( "__iset__", "2");
-    } else if ( (CPU == "elbrus-2c+") ) {
-        iset = 2;
-        Builder.defineMacro( "__iset__", "2");
-        Builder.defineMacro( "__elbrus_2cplus__");
-    } else if ( (CPU == "elbrus-v3") ) {
+    if ( (CPU == "elbrus-v3") ) {
         iset = 3;
         Builder.defineMacro( "__iset__", "3");
     } else if ( (CPU == "elbrus-4c") ) {
@@ -308,6 +302,8 @@ const char *const ElbrusTargetInfo::GCCRegNames[] = {
     "pred8",  "pred9",  "pred10", "pred11", "pred12", "pred13", "pred14", "pred15",
     "pred16", "pred17", "pred18", "pred19", "pred20", "pred21", "pred22", "pred23",
     "pred24", "pred25", "pred26", "pred27", "pred28", "pred29", "pred30", "pred31",
+
+    "call",
 };
 
 ArrayRef<const char *>

@@ -129,8 +129,6 @@ class LLVM_LIBRARY_VISIBILITY ElbrusTargetInfo : public TargetInfo
     {
         bool CPUKnown = llvm::StringSwitch<bool>(Name)
             .Case("native", true)
-            .Case("elbrus-v2", true)  // v2
-            .Case("elbrus-2c+", true)
             .Case("elbrus-v3", true)  // v3
             .Case("elbrus-4c", true)
             .Case("elbrus-v4", true)  // v4

@@ -6350,12 +6350,15 @@ Instruction *InstCombinerImpl::foldICmpUsingKnownBits(ICmpInst &I) {
     break;
   }
 
+// TUNE for E2K_BACKEND.
+#if 0
   // Turn a signed comparison into an unsigned one if both operands are known to
   // have the same sign.
   if (I.isSigned() &&
       ((Op0Known.Zero.isNegative() && Op1Known.Zero.isNegative()) ||
        (Op0Known.One.isNegative() && Op1Known.One.isNegative())))
     return new ICmpInst(I.getUnsignedPredicate(), Op0, Op1);
+#endif
 
   return nullptr;
 }

@@ -268,6 +268,8 @@ void SimplifyIndvar::eliminateIVComparison(ICmpInst *ICmp,
     LLVM_DEBUG(dbgs() << "INDVARS: Eliminated comparison: " << *ICmp << '\n');
   } else if (makeIVComparisonInvariant(ICmp, IVOperand)) {
     // fallthrough to end of function
+// TUNE for E2K_BACKEND.
+#if 0
   } else if (ICmpInst::isSigned(OriginalPred) &&
              SE->isKnownNonNegative(S) && SE->isKnownNonNegative(X)) {
     // If we were unable to make anything above, all we can is to canonicalize
@@ -279,6 +281,7 @@ void SimplifyIndvar::eliminateIVComparison(ICmpInst *ICmp,
     LLVM_DEBUG(dbgs() << "INDVARS: Turn to unsigned comparison: " << *ICmp
                       << '\n');
     ICmp->setPredicate(ICmpInst::getUnsignedPredicate(OriginalPred));
+#endif
   } else
     return;
 

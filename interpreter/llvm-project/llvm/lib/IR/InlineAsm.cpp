@@ -29,11 +29,12 @@ using namespace llvm;
 
 InlineAsm::InlineAsm(FunctionType *FTy, const std::string &asmString,
                      const std::string &constraints, bool hasSideEffects,
-                     bool isAlignStack, AsmDialect asmDialect, bool canThrow)
+                     bool isAlignStack, AsmDialect asmDialect, bool canThrow,
+                     bool isAsmInline)
     : Value(PointerType::getUnqual(FTy), Value::InlineAsmVal),
       AsmString(asmString), Constraints(constraints), FTy(FTy),
       HasSideEffects(hasSideEffects), IsAlignStack(isAlignStack),
-      Dialect(asmDialect), CanThrow(canThrow) {
+      Dialect(asmDialect), CanThrow(canThrow), IsAsmInline(isAsmInline) {
 #ifndef NDEBUG
   // Do various checks on the constraint string and type.
   cantFail(verify(getFunctionType(), constraints));
@@ -43,9 +44,9 @@ InlineAsm::InlineAsm(FunctionType *FTy, const std::string &asmString,
 InlineAsm *InlineAsm::get(FunctionType *FTy, StringRef AsmString,
                           StringRef Constraints, bool hasSideEffects,
                           bool isAlignStack, AsmDialect asmDialect,
-                          bool canThrow) {
+                          bool canThrow, bool isAsmInline) {
   InlineAsmKeyType Key(AsmString, Constraints, FTy, hasSideEffects,
-                       isAlignStack, asmDialect, canThrow);
+                       isAlignStack, asmDialect, canThrow, isAsmInline);
   LLVMContextImpl *pImpl = FTy->getContext().pImpl;
   return pImpl->InlineAsms.getOrCreate(PointerType::getUnqual(FTy), Key);
 }

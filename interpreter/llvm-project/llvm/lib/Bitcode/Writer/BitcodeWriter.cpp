@@ -2588,7 +2588,8 @@ void ModuleBitcodeWriter::writeConstants(unsigned FirstVal, unsigned LastVal,
       Record.push_back(VE.getTypeID(IA->getFunctionType()));
       Record.push_back(
           unsigned(IA->hasSideEffects()) | unsigned(IA->isAlignStack()) << 1 |
-          unsigned(IA->getDialect() & 1) << 2 | unsigned(IA->canThrow()) << 3);
+          unsigned(IA->getDialect() & 1) << 2 | unsigned(IA->canThrow()) << 3 |
+          unsigned(IA->isAsmInline()) << 7);
 
       // Add the asm string.
       const std::string &AsmStr = IA->getAsmString();

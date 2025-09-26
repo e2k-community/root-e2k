@@ -43,13 +43,13 @@ using namespace llvm;
 
 #define errorDumpHead( v) \
   { \
+      fprintf( stderr, "IRLite: error: fails to translate llvm-IR\n"); \
       fprintf( stderr, "  %s: %s:%d\n", __FUNCTION__, __FILE__, __LINE__); \
       fflush( stderr); \
       errs() << "\n" << *(v) << "\n\n"; \
   }
 #define errorDump( v) \
   { \
-      fprintf( stderr, "IRLite: error: fails to translate llvm-IR\n"); \
       errorDumpHead( v); \
       abort(); \
   }
@@ -106,21 +106,35 @@ is_number( const char *s)
 } /* is_number */
 
 static bool
-is_e2k_reg( const char *s0, int &roff) {
+is_e2k_reg( const char *s0, int &roff, std::string &asmreg) {
     bool r = false;
-    int k = 2;
+    bool isbt = false;
     const char *s = s0 + roff;
 
-    if ( (s[0] == 'g')
-         || (s[0] == 'r')
-         || (s[0] == 'b') ) {
-        if ( isdigit( s[1]) ) {
-            if ( isdigit( s[k]) ) ++k;
-            if ( isdigit( s[k]) ) ++k;
-            if ( (k == 2)
-                 || (s[1] != '0') ) {
+    asmreg = "";
+    if ( is_str_head( s, "ctpr1")
+         || is_str_head( s, "ctpr2")
+         || is_str_head( s, "ctpr3") )
+    {
+        r = true;
+        roff += strlen( "ctpr0");
+        asmreg = std::string( s, strlen( "ctpr0"));
+    } else if ( (s[0] == 'g') || (s[0] == 'r') || (s[0] == 'b') ) {
+        int k = 1;
+        char *se = 0;
+
+        if ( s[k] == '[' ) {
+            isbt = true;
+            k++;
+        }
+
+        strtoul( s + k, &se, 10);
+        if ( s < se ) {
+            k = se - s;
+            if ( !isbt || s[k] == ']' ) {
                 r = true;
-                roff += k;
+                roff += k + isbt;
+                asmreg = std::string( s, k + isbt);
             }
         }
     }
@@ -407,15 +421,6 @@ is_name_suff_stdint_bool( const char *name, const char *head)
 } /* is_name_suff_stdint_bool */
 
 static bool
-is_name_suff_stdint( const char *name, const char *head)
-{
-    static const char *a[] = {".i8", ".i16", ".i32", ".i64", ".i128", 0};
-    bool r = is_name_suff( name, head, a);
-
-    return (r);
-} /* is_name_suff_stdint */
-
-static bool
 is_name_suff_stdfloat( const char *name, const char *head)
 {
     static const char *a[] = {".f32", ".f64", ".f80", 0};
@@ -452,7 +457,6 @@ is_name_math_vec( std::string call_name, std::string &math_name, int &num_args)
             DEF_CNTF( "trunc",      1, "ftrunc"),
             DEF_CNTS( "rint",       1),
             DEF_CNTS( "nearbyint",  1),
-            DEF_CNTS( "fabs",       1),
             DEF_CNTS( "exp2",       1),
             DEF_CNTS( "exp",        1),
             DEF_CNTS( "pow",        2),
@@ -468,11 +472,6 @@ is_name_math_vec( std::string call_name, std::string &math_name, int &num_args)
             DEF_CNTS( "acos",       1),
             DEF_CNTS( "minnum",     2),
             DEF_CNTS( "maxnum",     2),
-            DEF_CNTF( "uadd.sat",   2, "uadd_sat"),
-            DEF_CNTF( "sadd.sat",   2, "sadd_sat"),
-            DEF_CNTF( "usub.sat",   2, "usub_sat"),
-            DEF_CNTF( "ssub.sat",   2, "ssub_sat"),
-            DEF_CNTF( "is.fpclass", 2, "isfpclass"),
             {0, 0, 0, 0}
         };
         #undef DEF_CNTS
@@ -2063,6 +2062,39 @@ LccrtEmitter::makeTypeStruct( StructType *T, NamedTypes &ntypes)
  * Создание типа.
  */
 lccrt_type_ptr
+LccrtEmitter::makeTypeInt( llvm::IntegerType *T) {
+    lccrt_type_ptr t = 0;
+    int bitsize = T->getPrimitiveSizeInBits();
+
+    if ( (bitsize == 1) ) {
+        t = lccrt_type_make_bool( m);
+    } else if ( isBitWidthNormal( bitsize) ) {
+        t = lccrt_type_make_int( m, bitsize / 8, 0);
+#if 0
+    } else if ( bitsize < 7 ) {
+        t = lccrt_type_make_int( m, 1, 0);
+    } else if ( bitsize < 16 ) {
+        t = lccrt_type_make_int( m, 2, 0);
+    } else if ( bitsize < 32 ) {
+        t = lccrt_type_make_int( m, 4, 0);
+    } else if ( bitsize < 64 ) {
+        t = lccrt_type_make_int( m, 8, 0);
+#endif
+    } else {
+        int ne = DL.getTypeStoreSize( T);
+
+        t = lccrt_type_make_array( lccrt_type_make_u8( m), ne);
+        t = lccrt_type_make_field( t, 1, 0, 0, ne * 8);
+        t = lccrt_type_make_struct( m, DL.getABITypeAlign( T).value(), ne, 1, &t, 0);
+    }
+
+    return (t);
+} /* LccrtEmitter::makeTypeInt */
+
+/**
+ * Создание типа.
+ */
+lccrt_type_ptr
 LccrtEmitter::makeType( Type *T, std::map<Type *, lccrt_type_ptr> &ntypes)
 {
     lccrt_type_ptr t = 0;
@@ -2100,18 +2132,7 @@ LccrtEmitter::makeType( Type *T, std::map<Type *, lccrt_type_ptr> &ntypes)
             }
             break;
           case Type::IntegerTyID:
-            if ( (bitsize == 1) ) {
-                t = lccrt_type_make_bool( m);
-
-            } else if ( isBitWidthNormal( bitsize) ) {
-                t = lccrt_type_make_int( m, bitsize / 8, 0);
-            } else {
-                int ne = DL.getTypeStoreSize( T);
-
-                t = lccrt_type_make_array( lccrt_type_make_u8( m), ne);
-                t = lccrt_type_make_field( t, 1, 0, 0, ne * 8);
-                t = lccrt_type_make_struct( m, DL.getABITypeAlign( T).value(), ne, 1, &t, 0);
-            }
+            t = makeTypeInt( dyn_cast<IntegerType>( T));
             break;
           case Type::PointerTyID:
             t = lccrt_type_make_pvoid( m);
@@ -2224,10 +2245,7 @@ LccrtFunctionEmitter::lowerCallName( lccrt_m_ptr m, const char *s, lccrt_type_pt
     int num_args = 0;
     bool is_name = false;
     std::string r = is_test ? "" : s;
-    static subst_t suff_stdint[6] = {{".i8", "_8"},   {".i16", "_16"},   {".i32", "_32"},
-                                     {".i64", "_64"}, {".i128", "_128"}, {0, 0}};
     static subst_t suff_stdfloat[4] = {{".f32", "f"}, {".f64", ""}, {".f80", "l"}, {0, 0}};
-    static subst_t suff_stdfloatn[4] = {{".f32", "_f32"}, {".f64", "_f64"}, {".f80", "_f80"}, {0, 0}};
     static struct
     {
         const char *iname;
@@ -2246,6 +2264,9 @@ LccrtFunctionEmitter::lowerCallName( lccrt_m_ptr m, const char *s, lccrt_type_pt
         {"llvm.memcpy.p0i8.p0i8.i64",       "__builtin_memcpy"},
         {"llvm.memmove.p0i8.p0i8.i64",      "__builtin_memmove"},
         {"llvm.memset.p0i8.i64",            "__builtin_memset"},
+        {"llvm.prefetch.p0",                "__builtin_prefetch"},
+        {"llvm.frameaddress.p0",            "__builtin_frame_address"},
+        {"llvm.frameaddress.p0i8",          "__builtin_frame_address"},
         {"llvm.trap",                       "abort"},
         {"llvm.debugtrap",                  "abort"},
         {"llvm.va_start",                   "__lccrt_va_start"},
@@ -2260,26 +2281,13 @@ LccrtFunctionEmitter::lowerCallName( lccrt_m_ptr m, const char *s, lccrt_type_pt
         {"llvm.stackrestore.p0",            "__lccrt_builtin_stackrestore"},
         {"llvm.eh.typeid.for",              "__lccrt_eh_typeid_for"},
         {"llvm.returnaddress",              "__builtin_return_address"},
-        {"llvm.uadd.with.overflow",         "__lccrt_uadd_overflow",        suff_stdint},
-        {"llvm.sadd.with.overflow",         "__lccrt_sadd_overflow",        suff_stdint},
         {"llvm.sadd.with.overflow.i65",     "__lccrt_sadd_overflow_65"},
-        {"llvm.usub.with.overflow",         "__lccrt_usub_overflow",        suff_stdint},
-        {"llvm.ssub.with.overflow",         "__lccrt_ssub_overflow",        suff_stdint},
-        {"llvm.umul.with.overflow",         "__lccrt_umul_overflow",        suff_stdint},
-        {"llvm.smul.with.overflow",         "__lccrt_smul_overflow",        suff_stdint},
-        {"llvm.uadd.sat",                   "__lccrt_uadd_sat",             suff_stdint},
-        {"llvm.sadd.sat",                   "__lccrt_sadd_sat",             suff_stdint},
-        {"llvm.usub.sat",                   "__lccrt_usub_sat",             suff_stdint},
-        {"llvm.ssub.sat",                   "__lccrt_ssub_sat",             suff_stdint},
-        {"llvm.umul.sat",                   "__lccrt_umul_sat",             suff_stdint},
-        {"llvm.smul.sat",                   "__lccrt_smul_sat",             suff_stdint},
         {"llvm.powi.f32",                   "__builtin_powif"},
         {"llvm.powi.f32.i32",               "__builtin_powif"},
         {"llvm.powi.f64",                   "__builtin_powi"},
         {"llvm.powi.f64.i32",               "__builtin_powi"},
         {"llvm.powi.f80",                   "__builtin_powil"},
         {"llvm.powi.f80.i32",               "__builtin_powil"},
-        {"llvm.fabs",                       "__builtin_fabs",               suff_stdfloat},
         {"llvm.exp",                        "__builtin_exp",                suff_stdfloat},
         {"llvm.exp2",                       "__builtin_exp2",               suff_stdfloat},
         {"llvm.ceil",                       "__builtin_ceil",               suff_stdfloat},
@@ -2306,7 +2314,6 @@ LccrtFunctionEmitter::lowerCallName( lccrt_m_ptr m, const char *s, lccrt_type_pt
         {"llvm.minnum",                     "__builtin_fmin",               suff_stdfloat},
         {"llvm.maxnum",                     "__builtin_fmax",               suff_stdfloat},
         {"llvm.copysign",                   "__builtin_copysign",           suff_stdfloat},
-        {"llvm.is.fpclass",                 "__lccrt_isfpclass",            suff_stdfloatn},
         {"llvm.mulsc3",                     ""},
         {"llvm.clear_cache",                "__builtin___clear_cache"},
         {"llvm.e2k.loadmas.8u",             "__builtin_loadmas_8u"},
@@ -2382,6 +2389,7 @@ LccrtFunctionEmitter::lowerCallName( lccrt_m_ptr m, const char *s, lccrt_type_pt
     if ( t )
     {
         lccrt_type_ptr targs[16];
+        lccrt_type_ptr tv = lccrt_type_make_void( m);
         lccrt_type_ptr ti32 = lccrt_type_make_u32( m);
         lccrt_type_ptr ti64 = lccrt_type_make_u64( m);
         const char *p = r.c_str();
@@ -2411,6 +2419,9 @@ LccrtFunctionEmitter::lowerCallName( lccrt_m_ptr m, const char *s, lccrt_type_pt
             targs[1] = ti32;
             targs[2] = ti64;
             (*t) = lccrt_type_make_func( tpv, 3, targs);
+        } else if ( (strcmp( p, "__builtin_prefetch") == 0) ) {
+            targs[0] = tpv;
+            (*t) = lccrt_type_make_func( tv, 1, targs);
         }
     }
 
@@ -2429,7 +2440,7 @@ LccrtFunctionEmitter::lowerCallName( lccrt_m_ptr m, const char *s, lccrt_type_pt
 } /* LccrtEmitter::lowerCallName */
 
 Type *
-LccrtEmitter::getValueElementType( Value *V) {
+LccrtEmitter::getValueElemType( Value *V) {
     Type *r = 0;
 
     if ( isa<LoadInst>( V) ) {
@@ -2441,17 +2452,35 @@ LccrtEmitter::getValueElementType( Value *V) {
     }
 
     return (r);
-} /* LccrtEmitter::getValueElementType */
+} /* LccrtEmitter::getValueElemType */
+
+/**
+ * Создание результирующего типа для getelementptr-выражения по
+ * типу результата и типу элемента результата.
+ */
+lccrt_type_ptr
+LccrtEmitter::makeElemPtrType( Type *ResTy, Type *ResElemTy) {
+    lccrt_type_ptr r = 0;
+    FixedVectorType *TV = dyn_cast<FixedVectorType>( ResTy);
+
+    r = makeType( ResElemTy);
+    r = lccrt_type_make_ptr_type( r);
+    if ( TV ) {
+        r = lccrt_type_make_array( r, TV->getNumElements());
+    }
+
+    return (r);
+} /* LccrtEmitter::makeElemPtrType */
 
 lccrt_type_ptr
 LccrtEmitter::makeValueType( Value *V) {
     lccrt_type_ptr r = 0;
+    Type *T = V->getType();
 
     if ( isa<LoadInst>( V) ) {
         r = makeType( dyn_cast<LoadInst>( V)->getType());
     } else if ( isa<GetElementPtrInst>( V) ) {
-        r = makeType( dyn_cast<GetElementPtrInst>( V)->getResultElementType());
-        r = lccrt_type_make_ptr_type( r);
+        r = makeElemPtrType( T, dyn_cast<GetElementPtrInst>( V)->getResultElementType());
     } else if ( isa<AllocaInst>( V) ) {
         //r = makeType( dyn_cast<AllocaInst>( V)->getAllocatedType());
         //r = lccrt_type_make_ptr_type( r);
@@ -2467,8 +2496,7 @@ LccrtEmitter::makeValueType( Value *V) {
     } else if ( isa<Constant>( V) ) {
         if ( ConstantExpr *e = dyn_cast<ConstantExpr>(V) ) {
             if ( e->getOpcode() == Instruction::GetElementPtr ) {
-                r = makeType( dyn_cast<GEPOperator>( e)->getResultElementType());
-                r = lccrt_type_make_ptr_type( r);
+                r = makeElemPtrType( T, dyn_cast<GEPOperator>( e)->getResultElementType());
             } else if ( e->getOpcode() == Instruction::IntToPtr ) {
                 r = lccrt_type_make_pvoid( m);
             } else if ( e->getOpcode() == Instruction::PtrToInt ) {
@@ -2519,6 +2547,8 @@ LccrtEmitter::makeValueType( Value *V) {
         } else if ( isa<ConstantStruct>(V) ) {
             r = makeType( V->getType());
         } else if ( isa<ConstantArray>(V) ) {
+            r = makeType( V->getType());
+        } else if ( isa<ConstantDataArray>(V) ) {
             r = makeType( V->getType());
         } else if ( isa<GlobalValue>(V) ) {
             r = makeType( dyn_cast<GlobalValue>(V)->getValueType());
@@ -2761,13 +2791,18 @@ LccrtFunctionEmitter::evalFuncProfile( const Function *F, lccrt_function_ptr f) 
 
 void
 LccrtFunctionEmitter::generateComment( const Instruction &O, lccrt_oper_iterator_ptr i) {
-    if ( !isa<PHINode>( O) ) {
+    if ( !isa<PHINode>( O)
+         && !isa<LandingPadInst>( O) )
+    {
         lccrt_var_ptr a1, a2;
         lccrt_type_ptr t1, t2;
         std::string so;
         raw_string_ostream RSO( so);
 
         O.print( RSO, le.MST, true);
+        for ( int i = 0; i < (int)so.size(); ++i ) {
+            if ( 0 && !isalnum( so[i]) && so[i] != ' ' ) so[i] = '.';
+        }
         t1 = lccrt_type_make_array( lccrt_type_make_u8( m), so.size() + 1);
         a1 = le.makeVarConst( t1, lccrt_varinit_new_str( t1, so.size(), so.data()));
         t2 = lccrt_type_make_pbyte( m);
@@ -2781,7 +2816,6 @@ LccrtFunctionEmitter::generateComment( const Instruction &O, lccrt_oper_iterator
 void
 LccrtFunctionEmitter::makeOpers()
 {
-    MapPHINodeToVar phis;
     MapBBToOper cts;
     MapInstToArgs oas;
     lccrt_oper_ptr lbl_work;
@@ -2789,6 +2823,7 @@ LccrtFunctionEmitter::makeOpers()
     int num_ct_alts = 0;
     int cur_ct_alts = 0;
     int is_start = 1;
+    bool gencom = false;
     lccrt_oper_iterator_ptr i = lccrt_oper_iterator_new( c);
 
     evalFuncProfile( F, f);
@@ -2808,18 +2843,17 @@ LccrtFunctionEmitter::makeOpers()
 
     lbl_work = lccrt_oper_new_label( f, 0, 0);
 
-#if 1
-    if ( le.verbose_ir )
-    {
+    if ( getenv( "LLVM_LCCRT_COMMENT") ) {
+        gencom = true;
+    }
+
+    if ( le.verbose_ir ) {
         errs() << "==============\n";
         errs() << F->getName().str() << ":\n";
         errs().flush();
     }
-#endif
 
-    /**
-     * Вычисляем размер памяти необходимой для альтернатив всех операций перехода.
-     */
+    // Вычисляем размер памяти необходимой для альтернатив всех операций перехода.
     for ( Function::const_iterator I = F->begin(), IE = F->end(); I != IE; ++I )
     {
         const BasicBlock *BB = &(*I);
@@ -2851,6 +2885,7 @@ LccrtFunctionEmitter::makeOpers()
 
             assert( !is_ct);
 #if 1
+            if ( gencom ) generateComment( O, i);
             if ( le.verbose_ir )
             {
                 errs() << "  -------------\n" << O << "\n";
@@ -2859,9 +2894,13 @@ LccrtFunctionEmitter::makeOpers()
             }
 #endif
 
-            //generateComment( O, i);
-           
-            if ( !O.getType()->isVoidTy() ) {
+            if ( isInsertvalueChain( J) ) {
+                res = makeValue( O.getOperand( 0));
+                lvals.insert( PairValueToVar( &O, res));
+            } else if ( isInsertelementChain( J) ) {
+                res = makeValue( O.getOperand( 0));
+                lvals.insert( PairValueToVar( &O, res));
+            } else if ( !O.getType()->isVoidTy() ) {
                 res = makeValue( cast<Value>(&O));
                 tr = lccrt_var_get_type( res);
             }
@@ -2928,13 +2967,8 @@ LccrtFunctionEmitter::makeOpers()
 
             } else if ( isa<GetElementPtrInst>(O) ) {
                 makeGetelementptr( O, res, i);
-
             } else if ( isa<PHINode>(O) )
             {
-                const PHINode &FI = cast<PHINode>(O);
-
-                phis.insert( PairPHINodeToVar( &FI, res));
-
             } else if ( isa<AllocaInst>(O) ) {
                 makeAlloca( O, res, is_start, i);
 
@@ -2946,47 +2980,28 @@ LccrtFunctionEmitter::makeOpers()
             {
                 makeExtractvalue( O, res, i);
 
-            } else if ( isa<InsertValueInst>(O) )
-            {
+            } else if ( isa<InsertValueInst>(O) ) {
                 makeInsertvalue( O, res, i);
-
             } else if ( isa<ExtractElementInst>(O) ) {
                 makeExtractelement( O, res, i);
-
-            } else if ( isa<InsertElementInst>(O) )
-            {
+            } else if ( isa<InsertElementInst>(O) ) {
                 makeInsertelement( O, res, i);
-
-            } else if ( isa<ShuffleVectorInst>(O) )
-            {
+            } else if ( isa<ShuffleVectorInst>(O) ) {
                 makeShufflevector( O, res, i);
-
-            } else if ( isa<VAArgInst>(O) )
-            {
+            } else if ( isa<VAArgInst>(O) ) {
                 makeVaArg( O, res, i);
-
-            } else if ( isa<FenceInst>(O) )
-            {
+            } else if ( isa<FenceInst>(O) ) {
                 makeFence( O, res, i);
-
-            } else if ( isa<AtomicCmpXchgInst>(O) )
-            {
+            } else if ( isa<AtomicCmpXchgInst>(O) ) {
                 makeCmpXchg( O, res, i);
-
-            } else if ( isa<AtomicRMWInst>(O) )
-            {
+            } else if ( isa<AtomicRMWInst>(O) ) {
                 makeAtomicrmw( O, res, i);
-
-            } else if ( isa<UnreachableInst>(O) )
-            {
+            } else if ( isa<UnreachableInst>(O) ) {
                 is_ct = 1;
                 lccrt_oper_new_return( f, 0, i);
-
-            } else if ( isa<FreezeInst>(O) )
-            {
+            } else if ( isa<FreezeInst>(O) ) {
                 lccrt_oper_new_move( f, makeValuePtrcast( V1, tr, i), res, i);
-            } else
-            {
+            } else {
                 errorDump( &O);
             }
 
@@ -3044,44 +3059,58 @@ void
 LccrtFunctionEmitter::makeGetelementptr( User &E, lccrt_var_ptr v, lccrt_oper_iterator_ptr i)
 {
     lccrt_oper_ptr res = 0;
-    unsigned num_args = E.getNumOperands();
+    int num_args = E.getNumOperands();
     GetElementPtrInst *G = dyn_cast<GetElementPtrInst>( &E);
     GEPOperator *GEP = dyn_cast<GEPOperator>( &E);
     bool is_vector = false;
     int *num_elems = new int[num_args];
     int max_elems = 1;
     lccrt_type_ptr tu64 = lccrt_type_make_u64( m);
+    Type *ResTy = E.getType();
+    Type *SrcETy = G ? G->getSourceElementType() : GEP->getSourceElementType();
+    bool is_rvector = false;
 
-    for ( unsigned k = 0; k < num_args; ++k ) {
+    if ( ResTy->isVectorTy() ) {
+        FixedVectorType *VRTy = dyn_cast<FixedVectorType>( ResTy);
+
+        is_rvector = true;
+        if ( VRTy ) {
+            max_elems = VRTy->getNumElements();
+        } else {
+            errorDump( &E);
+        }
+    }
+
+    for ( int k = 0; k < num_args; ++k ) {
         Type *kTy = E.getOperand( k)->getType();
 
         num_elems[k] = 1;
         if ( isa<ScalableVectorType>( kTy) ) {
             errorDump( &E);
-
         } else if ( isa<FixedVectorType>( kTy) ) {
             FixedVectorType *VecTy = cast<FixedVectorType>( kTy);
 
             is_vector = true;
             num_elems[k] = VecTy->getNumElements();
-            max_elems = (max_elems > 1) ? max_elems : num_elems[k];
-            if ( (num_elems[k] != 1) && (num_elems[k] != max_elems) ) {
+            if ( num_elems[k] != max_elems ) {
                 errorDump( &E);
             }
         }
     }
 
-    assert( is_vector == isa<FixedVectorType>( E.getType()));
+    if ( is_vector != is_rvector ) {
+        errorDump( &E);
+    }
+
     if ( !is_vector )
     {
-        Type *Ty = G ? G->getSourceElementType() : GEP->getSourceElementType();
-        uint64_t alloc_size = le.DL.getTypeAllocSize( Ty);
-        uint64_t store_size = le.DL.getTypeStoreSize( Ty);
+        uint64_t alloc_size = le.DL.getTypeAllocSize( SrcETy);
+        uint64_t store_size = le.DL.getTypeStoreSize( SrcETy);
         lccrt_var_ptr *args = new lccrt_var_ptr[num_args];
-        lccrt_type_ptr tp = lccrt_type_make_ptr_type( le.makeType( Ty));
+        lccrt_type_ptr tp = lccrt_type_make_ptr_type( le.makeType( SrcETy));
 
         args[0] = makeValuePtrcast( E.getOperand( 0), tp, i);
-        for ( unsigned k = 1; k < num_args; ++k ) {
+        for ( int k = 1; k < num_args; ++k ) {
             args[k] = makeValue( E.getOperand( k), i);
         }
 
@@ -3120,57 +3149,68 @@ LccrtFunctionEmitter::makeGetelementptr( User &E, lccrt_var_ptr v, lccrt_oper_it
 
     } else if ( is_vector )
     {
+        lccrt_type_ptr srcety = le.makeType( SrcETy);
+        lccrt_type_ptr srcpety = lccrt_type_make_ptr_type( srcety);
         lccrt_var_ptr *args = new lccrt_var_ptr[num_args];
-        lccrt_var_ptr *jargs = new lccrt_var_ptr[num_args];
+        lccrt_var_ptr *ajs = new lccrt_var_ptr[num_args];
+        lccrt_oper_ptr prev = 0;
+        lccrt_var_ptr bk = 0;
 
-        errorDump( &E);
-        assert( (int)cast<FixedVectorType>( E.getType())->getNumElements() == max_elems);
-
-        // Готовим аргументы для формирования элементов адресных цепочек.
-        for ( int k = 0; k < (int)num_args; ++k )
-        {
-            args[k] = makeValue( E.getOperand( k), i);
-        }
-
-        // Для каждой координаты вектора строим цепочку адресации.
-        for ( int j = 0; j < max_elems; ++j )
-        {
-            lccrt_var_ptr raj;
+        for ( int k = 0; k < max_elems; ++k ) {
+            struct { lccrt_var_ptr v[2]; } jargs;
             struct { lccrt_var_ptr v[3]; } eargs;
 
-            // Формируем аргументы для текущей цепочки.
-            for ( int k = 0; k < (int)num_args; ++k )
-            {
-                Type *kTy = E.getOperand( k)->getType();
+            for ( int j = 0; j < num_args; ++j ) {
+                Value *V = E.getOperand( j);
+                Type *T = V->getType();
 
-                if ( !isa<FixedVectorType>( kTy) )
-                {
-                    // Скаляр рассматриваем как вектор из одинаковых значений.
-                    jargs[k] = args[k];
-                } else
-                {
-                    assert_define( FixedVectorType *VecTy = cast<FixedVectorType>( kTy));
+                if ( k == 0 ) {
+                    // При первом проходе транслируем j-ый аргумент GEP'а.
+                    args[j] = makeValue( V, i);
+                    if ( j == 0 ) {
+                        if ( T->isPointerTy() ) {
+                            // Для скалярного первого аргумента сразу преобразуем
+                            // тип void* в указатель на базовый элемент.
+                            prev = lccrt_oper_new_bitcast( f, args[j], srcpety, 0, i);
+                            args[j] = lccrt_oper_get_res( prev);
+                        }
+                    }
+                }
 
-                    // Читаем соответствующую координату для очереднего элемента цепочки.
-                    assert( max_elems = VecTy->getNumElements());
-                    eargs = {{args[k], le.makeVarConstHex( tu64, j)}};
-                    jargs[k] = lccrt_oper_get_res( lccrt_oper_new_elemread( f, 2, eargs.v, 0, i));
+                if ( T->isVectorTy() ) {
+                    // Векторный j-ый аргумент уже транслирован. Осталось
+                    // прочитать k-ую координату.
+                    jargs = {{args[j], le.makeVarConstHex( tu64, k)}};
+                    prev = lccrt_oper_new_elemread( f, 2, jargs.v, 0, i);
+                    ajs[j] = lccrt_oper_get_res( prev);
+
+                    if ( j == 0 ) {
+                        // Для первого аргумента необходимо преобразовать тип void*
+                        // k-ой координаты в указатель на базовый элемент.
+                        prev = lccrt_oper_new_bitcast( f, ajs[j], srcpety, 0, i);
+                        ajs[j] = lccrt_oper_get_res( prev);
+                    }
+                } else {
+                    // Скалярный j-ый аргумент уже транслирован.
+                    ajs[j] = args[j];
                 }
             }
 
-            // Формируем очередную цепочку адресации.
-            raj = lccrt_oper_get_res( lccrt_oper_new_elemptr( f, num_args, jargs, 0, i));
+            // Для k-ой координаты результата подготовлены все аргументы цепочки
+            // адресации. Создаем операцию адресации.
+            bk = lccrt_oper_get_res( lccrt_oper_new_elemptr( f, num_args, ajs, 0, i));
 
-            // Сохраняем результат цепочки адресации в текущую координату результата.
-            eargs = {{v, raj, le.makeVarConstHex( tu64, j)}};
+            // Сохраняем результат цепочки адресации в k-ую координату результата.
+            eargs = {{v, bk, le.makeVarConstHex( tu64, k)}};
             lccrt_oper_new_elemwrite( f, 3, eargs.v, i);
         }
 
+        delete[] ajs;
         delete[] args;
-        delete[] jargs;
     } else
     {
-        printf( "\n%s:%s:%d\n  Wrong getelementptr arguments types\n\n", __FUNCTION__, __FILE__, __LINE__);
+        printf( "\n%s:%s:%d\n  Wrong getelementptr arguments types\n\n",
+                __FUNCTION__, __FILE__, __LINE__);
         errorDump( &E);
     }
 
@@ -3367,6 +3407,19 @@ LccrtFunctionEmitter::makeValuePtrcast( Value *V, lccrt_type_ptr rtype, lccrt_oi
     return (r);
 } /* LccrtFunctionEmitter::makeValuePtrcast */
 
+extern "C" void *CUR_V0;
+extern "C" void *CUR_V1;
+extern "C" void printCurv();
+
+void *CUR_V0 = 0;
+void *CUR_V1 = 0;
+
+void printCurv() {
+    llvm::Value *V0 = (llvm::Value *)CUR_V0;
+    llvm::Value *V1 = (llvm::Value *)CUR_V1;
+    llvm::dbgs() << *V0 << "\n-----\n" << *V1 << "\n";
+}
+
 /**
  * Создание аргумента операции.
  */
@@ -3375,6 +3428,12 @@ LccrtFunctionEmitter::makeValue( Value *V, lccrt_oi_ptr i, bool noncarg)
 {
     lccrt_var_ptr v = 0;
     MapValueToVar::const_iterator l = lvals.find( V);
+
+#ifdef LLVM_DBG_CURV
+    bool curv = false;
+    CUR_V1 = V;
+    if ( CUR_V0 == 0 ) { CUR_V0 = V; curv = true; }
+#endif /* LLVM_DBG_CURV */
 
     if ( !V ) {
         ;
@@ -3404,7 +3463,7 @@ LccrtFunctionEmitter::makeValue( Value *V, lccrt_oi_ptr i, bool noncarg)
             }
         } else if ( isa<InlineAsm>(V) ) {
             assert( 0);
-        } else if ( IVI && IVI0 && IVI0->hasOneUse() ) {
+        } else if ( false && IVI && IVI0 && IVI0->hasOneUse() ) {
             v = makeValue( IVI0, i, noncarg);
             return (v);
         } else {
@@ -3416,6 +3475,10 @@ LccrtFunctionEmitter::makeValue( Value *V, lccrt_oi_ptr i, bool noncarg)
         
         lvals.insert( PairValueToVar( V, v));
     }
+
+#ifdef LLVM_DBG_CURV
+    if ( curv ) CUR_V0 = 0;
+#endif /* LLVM_DBG_CURV */
 
     return (v);
 } /* LccrtFunctionEmitter::makeValue */
@@ -3819,10 +3882,11 @@ LccrtFunctionEmitter::makeLibCallFast( const char *func_name,
     lccrt_function_ptr af = 0;
     lccrt_type_ptr tf = 0;
     lccrt_type_ptr tfp = 0;
+    lccrt_type_ptr tres = res ? lccrt_var_get_type( res) : lccrt_type_make_void( m);
     std::string func_name_s( func_name);
     int num_args = arg3 ? 3 : (arg2 ? 2 : (arg1 ? 1 : 0));
 
-    tf = lccrt_type_make_func( lccrt_var_get_type( res), num_args, tfa);
+    tf = lccrt_type_make_func( tres, num_args, tfa);
     tfp = lccrt_type_make_ptr_type( tf);
 
     af = le.makeFunctionFast( func_name, tf);
@@ -3869,6 +3933,22 @@ LccrtFunctionEmitter::makeLibCallFast( const char *func_name,
 
     return;
 } /* LccrtFunctionEmitter::makeLibCallFast */
+
+/**
+ * Создание вызова из библиотеки поддержки с передачей операндов по значению.
+ */
+void
+LccrtFunctionEmitter::makeLibVecCall( const char *fname, int num_elems,
+                                      int ebits1, int ebitsr,
+                                      lccrt_v_ptr va, lccrt_v_ptr vr, lccrt_oi_ptr i)
+{
+    char sf[256];
+
+    snprintf( sf, 256, "__lccrt_builtin_%s_v%di%di%d", fname, num_elems, ebits1, ebitsr);
+    makeLibCallFast( sf, va, 0, 0, vr, i);
+
+    return;
+} /* LccrtFunctionEmitter::makeLibVecCall */
 
 /**
  * Создание переменной под временный результат.
@@ -4097,13 +4177,14 @@ LccrtFunctionEmitter::makeArith1( unsigned opcode, User &O, lccrt_var_ptr res, l
         int num_elems = TV1->getNumElements();
         int elem_size = le.DL.getTypeAllocSize( TVE1);
 
-        if ( 0 && ((elem_size == 4)
+        if ( ((elem_size == 4)
               || (elem_size == 8))
              && ((num_elems * elem_size == 8)
-                 || (num_elems * elem_size == 16))
+                 || (num_elems * elem_size == 16)
+                 || (num_elems * elem_size == 32)
+                 || (num_elems * elem_size == 64))
              && isFastLibCall( &O, __FILE__, __LINE__) )
         {
-            errorDump( &O);
             snprintf( sf, 256, "__lccrt_builtin_%s_v%df%d",
                       func_name.c_str(), num_elems, 8*elem_size);
             makeLibCallFast( sf, O, res, i);
@@ -4183,6 +4264,7 @@ LccrtFunctionEmitter::makeArith2( unsigned opcode, Instruction *O,
 void
 LccrtFunctionEmitter::makeArith2( unsigned opcode, User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
 {
+    char sf[256];
     Value *V1 = O.getOperand( 0);
     Value *V2 = O.getOperand( 1);
     Instruction *I = dyn_cast<Instruction>( &O);    
@@ -4190,23 +4272,24 @@ LccrtFunctionEmitter::makeArith2( unsigned opcode, User &O, lccrt_var_ptr res, l
     std::string func_name = "";
     bool is_unsig = false;
     bool is_float = false;
-    int bytemin = -1;
+    bool isshift = false;
+    const char *hs = "__lccrt_builtin";
 
     switch ( opcode )
     {
-      case Instruction::Add:  func_name = "add";  is_unsig = 1; bytemin = 1; break;
-      case Instruction::Sub:  func_name = "sub";  is_unsig = 1; bytemin = 1; break;
-      case Instruction::Mul:  func_name = "mul";  is_unsig = 1; bytemin = 2; break;
-      case Instruction::UDiv: func_name = "udiv"; break;
+      case Instruction::Add:  func_name = "add";  is_unsig = 1; break;
+      case Instruction::Sub:  func_name = "sub";  is_unsig = 1; break;
+      case Instruction::Mul:  func_name = "mul";  is_unsig = 1; break;
+      case Instruction::UDiv: func_name = "udiv"; is_unsig = 1; break;
       case Instruction::SDiv: func_name = "sdiv"; break;
-      case Instruction::URem: func_name = "umod"; break;
+      case Instruction::URem: func_name = "umod"; is_unsig = 1; break;
       case Instruction::SRem: func_name = "smod"; break;
-      case Instruction::Shl:  func_name = "shl";  bytemin = 2; break;
-      case Instruction::LShr: func_name = "shr";  bytemin = 2; break;
-      case Instruction::AShr: func_name = "sar";  bytemin = 2; break;
-      case Instruction::And:  func_name = "and";  is_unsig = 1; bytemin = 1; break;
-      case Instruction::Or:   func_name = "or";   is_unsig = 1; bytemin = 1; break;
-      case Instruction::Xor:  func_name = "xor";  is_unsig = 1; bytemin = 1; break;
+      case Instruction::Shl:  func_name = "shl";  isshift = true; break;
+      case Instruction::LShr: func_name = "shr";  isshift = true; break;
+      case Instruction::AShr: func_name = "sar";  break;
+      case Instruction::And:  func_name = "and";  is_unsig = 1; break;
+      case Instruction::Or:   func_name = "or";   is_unsig = 1; break;
+      case Instruction::Xor:  func_name = "xor";  is_unsig = 1; break;
       case Instruction::FAdd: func_name = "fadd"; is_float = true; break;
       case Instruction::FSub: func_name = "fsub"; is_float = true; break;
       case Instruction::FMul: func_name = "fmul"; is_float = true; break;
@@ -4217,49 +4300,70 @@ LccrtFunctionEmitter::makeArith2( unsigned opcode, User &O, lccrt_var_ptr res, l
         break;
     }        
 
-    if ( isa<ScalableVectorType>( T1) )
-    {
+    if ( isa<ScalableVectorType>( T1) ) {
         errorDump( &O);
 
-    } else if ( isa<FixedVectorType>( T1) )
-    {
-        char sf[256];
+    } else if ( isa<FixedVectorType>( T1) ) {
         FixedVectorType *TV1 = static_cast<FixedVectorType *>( T1);
         Type *TVE1 = TV1->getElementType();
         int num_elems = TV1->getNumElements();
+        int bytesize = le.DL.getTypeAllocSize( TV1);
         int elem_size = le.DL.getTypeAllocSize( TVE1);
+        int elem_bitsize = le.DL.getTypeSizeInBits( TVE1);
+        std::string bltsuff = "";
+        bool is_float80 = TVE1->isX86_FP80Ty();
+
+        if ( elem_bitsize == 1 ) {
+            if ( (opcode == Instruction::And)
+                 || (opcode == Instruction::Or)
+                 || (opcode == Instruction::Xor) )
+            {
+                elem_bitsize = 8;
+            }
+        }
+
+        if ( ((opcode == Instruction::Shl)
+              || (opcode == Instruction::LShr)
+              || (opcode == Instruction::AShr))
+             && !le.isVecUniform( V2) )
+        {
+            bltsuff = "multi";
+        }
 
         if ( (opcode != Instruction::FRem)
              && is_float
-             && ((elem_size == 4)
-                 || (elem_size == 8))
-             && ((num_elems * elem_size == 8)
-                 || (num_elems * elem_size == 16)
-                 || (num_elems * elem_size == 32)
-                 || (num_elems * elem_size == 64))
+             && ((elem_bitsize == 32)
+                 || (elem_bitsize == 64)
+                 || is_float80)
+             && ((num_elems * elem_size >= 4)
+                 && (num_elems * elem_size <= 128))
              && isFastLibCall( &O, __FILE__, __LINE__) )
         {
+            elem_bitsize = is_float80 ? 80 : elem_bitsize;
             snprintf( sf, 256, "__lccrt_builtin_%s_v%df%d",
-                      func_name.c_str(), num_elems, 8*elem_size);
+                      func_name.c_str(), num_elems, elem_bitsize);
             makeLibCallFast( sf, O, res, i);
 
         } else if ( isa<IntegerType>( TVE1)
-                    && (((opcode != Instruction::Shl)
-                         && (opcode != Instruction::LShr)
-                         && (opcode != Instruction::AShr))
-                        || le.isVecUniform( V2))
-                    && le.isIntBitWidthNormal( TVE1)
+                    && ((opcode == Instruction::Shl)
+                        || (opcode == Instruction::LShr)
+                        || (opcode == Instruction::AShr))
+                    && ((num_elems*elem_size >= 1)
+                        && (num_elems*elem_size <= 128))
+                    && (elem_size <= 8)
+                    && isFastLibCall( &O, __FILE__, __LINE__) )
+        {
+            snprintf( sf, 256, "__lccrt_builtin_%s%s_v%di%d",
+                      func_name.c_str(), bltsuff.c_str(), num_elems, elem_bitsize);
+            makeLibCallFast( sf, O, res, i);
+
+        } else if ( isa<IntegerType>( TVE1)
+                    && le.isBitWidthNormal( elem_bitsize)
                     && (((elem_size <= 8)
-                         && (bytemin > 0)
-                         && (elem_size >= bytemin)
-                         && ((num_elems * elem_size == 4)
-                             || (num_elems * elem_size == 8)
-                             || (num_elems * elem_size == 16)
-                             || (num_elems * elem_size == 32)))
-                        || (((opcode == Instruction::Shl)
-                             || (opcode == Instruction::LShr)
-                             || (opcode == Instruction::AShr)
-                             || (opcode == Instruction::Add)
+                         && (elem_size >= 1)
+                         && ((num_elems * elem_size >= 1)
+                             && (num_elems * elem_size <= 128)))
+                        || (((opcode == Instruction::Add)
                              || (opcode == Instruction::Sub)
                              || (opcode == Instruction::Mul))
                             && (((elem_size == 1)
@@ -4275,11 +4379,18 @@ LccrtFunctionEmitter::makeArith2( unsigned opcode, User &O, lccrt_var_ptr res, l
                                 || (num_elems * elem_size == 32))))
                     && isFastLibCall( &O, __FILE__, __LINE__) )
         {
-            snprintf( sf, 256, "__lccrt_builtin_%s_v%di%d",
-                      func_name.c_str(), num_elems, 8*elem_size);
+            snprintf( sf, 256, "%s_%s_v%di%d", hs, func_name.c_str(), num_elems, elem_bitsize);
+            makeLibCallFast( sf, O, res, i);
+        } else if ( (elem_bitsize <= 64)
+                    && (bytesize <= 8*8)
+                    && (opcode == Instruction::And)
+                    && isFastLibCall( &O, __FILE__, __LINE__) )
+        {
+            snprintf( sf, 256, "%s_%s_v%di%d", hs, func_name.c_str(), num_elems, elem_bitsize);
             makeLibCallFast( sf, O, res, i);
         } else
         {
+            if ( isFastLibCall( &O, __FILE__, __LINE__) ) errorDump( &O);
             func_name = "__lccrt_" + func_name + "_v";
             makeLibCall( func_name.c_str(), true, O, res, false, i);
             if ( (opcode == Instruction::FMul) ) {
@@ -4289,6 +4400,8 @@ LccrtFunctionEmitter::makeArith2( unsigned opcode, User &O, lccrt_var_ptr res, l
     } else if ( !le.isIntBitWidthNormalOrBool( T1)
                 || (opcode == Instruction::FRem) )
     {
+        int bitsize = le.DL.getTypeSizeInBits( T1);
+
         if ( isa<IntegerType>( T1)
              && (le.DL.getTypeAllocSize( T1) <= 8)
              && (is_unsig) )
@@ -4296,7 +4409,6 @@ LccrtFunctionEmitter::makeArith2( unsigned opcode, User &O, lccrt_var_ptr res, l
             lccrt_var_ptr b0, b1;
             lccrt_var_ptr a1 = makeValue( V1, i);
             lccrt_var_ptr a2 = makeValue( V2, i);
-            uint64_t bitsize = le.DL.getTypeSizeInBits( T1);
             lccrt_type_ptr tu32 = lccrt_type_make_u32( m);
             lccrt_type_ptr tu64 = lccrt_type_make_u64( m);
             lccrt_type_ptr tu = (bitsize <= 32) ? tu32 : tu64;
@@ -4310,10 +4422,16 @@ LccrtFunctionEmitter::makeArith2( unsigned opcode, User &O, lccrt_var_ptr res, l
             b0 = lccrt_oper_get_res( lccrt_oper_new_and( f, b0, b1, 0, i));
 
             makeBitcastIntToNInt( bitsize, b0, res, i);
-        } else
-        {
+        } else if ( isa<IntegerType>( T1) && (bitsize <= 64) && isshift ) {
+            snprintf( sf, 256, "%s_%s_i%d", hs, func_name.c_str(), bitsize);
+            makeLibCallFast( sf, O, res, i);
+        } else if ( (bitsize <= 128) && (opcode == Instruction::Add) ) {
+            snprintf( sf, 256, "%s_%s_i%d", hs, func_name.c_str(), bitsize);
+            makeLibCallFast( sf, O, res, i);
+        } else {
             func_name = "__lccrt_" + func_name + "_n";
             makeLibCall( func_name.c_str(), false, O, res, false, i);
+            //dbgs() << O << "\n";
         }
     } else
     {
@@ -4412,16 +4530,20 @@ LccrtFunctionEmitter::makeCtpop( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
         {
             makeLibCall( "__lccrt_ctpop_v", true, O, res, false, i);
         }
-    } else if ( le.isIntBitWidthNormal( T1) )
+    } else if ( T1->isIntegerTy() )
     {
         int bitsize = le.DL.getTypeSizeInBits( T1);
 
-        snprintf( sf, 256, "__lccrt%s_ctpop_i%d",
-                  (bitsize < 128) ? "_builtin" : "", bitsize);
-        makeLibCallFast( sf, a1, 0, 0, res, i);
-    } else
-    {
-        makeLibCall( "__lccrt_ctpop_n", false, O, res, false, i);
+        if ( bitsize <= 128 )
+        {
+            snprintf( sf, 256, "__lccrt_builtin_ctpop_i%d", bitsize);
+            makeLibCallFast( sf, a1, 0, 0, res, i);
+        } else
+        {
+            makeLibCall( "__lccrt_ctpop_n", false, O, res, false, i);
+        }
+    } else {
+        errorDump( &O);
     }
 
     return;
@@ -4449,9 +4571,8 @@ LccrtFunctionEmitter::makeCttz( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
 
         if ( ((elem_size == 4)
               || (elem_size == 8))
-             && ((num_elems * elem_size == 4)
-                 || (num_elems * elem_size == 8)
-                 || (num_elems * elem_size == 16))
+             && (1 <= num_elems * elem_size)
+             && (num_elems * elem_size <= 32)
              && isFastLibCall( &O, __FILE__, __LINE__) )
         {
             snprintf( sf, 256, "__lccrt_builtin_cttz_v%di%d",
@@ -4460,14 +4581,17 @@ LccrtFunctionEmitter::makeCttz( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
         } else {
             makeLibCall( "__lccrt_cttz_v", true, O, res, true, i);
         }
-    } else if ( le.isIntBitWidthNormal( T1) ) {
+    } else if ( T1->isIntegerTy() ) {
         int bitsize = le.DL.getTypeSizeInBits( T1);
 
-        snprintf( sf, 256, "__lccrt%s_cttz_i%d",
-                  (bitsize < 128) ? "_builtin" : "", bitsize);
-        makeLibCallFast( sf, a1, 0, 0, res, i);
+        if ( bitsize <= 128 ) {
+            snprintf( sf, 256, "__lccrt_builtin_cttz_i%d", bitsize);
+            makeLibCallFast( sf, a1, 0, 0, res, i);
+        } else {
+            makeLibCall( "__lccrt_cttz_n", false, O, res, true, i);
+        }
     } else {
-        makeLibCall( "__lccrt_cttz_n", false, O, res, true, i);
+        errorDump( &O);
     }
 
     return;
@@ -4608,6 +4732,7 @@ LccrtFunctionEmitter::makeFrexp( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
 void
 LccrtFunctionEmitter::makeFshl( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
 {
+    char sf[256];
     Value *V1 = O.getOperand( 0);
     Value *V2 = O.getOperand( 1);
     Value *V3 = O.getOperand( 2);
@@ -4616,11 +4741,33 @@ LccrtFunctionEmitter::makeFshl( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
     Type *T1 = V1->getType();
     const CallInst &CI = cast<CallInst>(O);
     std::string cn = CI.getCalledOperand()->getName().str();
+    const char *hs = "__lccrt_builtin";
 
     if ( isa<ScalableVectorType>( T1) ) {
         errorDump( &O);
     } else if ( isa<FixedVectorType>( T1) ) {
-        makeLibCall( "__lccrt_fshl_v", true, O, res, false, i);
+        FixedVectorType *TV1 = dyn_cast<FixedVectorType>( T1);
+        Type *TVE1 = TV1->getElementType();
+        int num_elems = TV1->getNumElements();
+        int bytesize = le.DL.getTypeAllocSize( TVE1);
+        int elem_bitsize = le.DL.getTypeSizeInBits( TVE1);
+
+        if ( le.isBitWidthNormal( elem_bitsize)
+             && (elem_bitsize <= 64)
+             && (bytesize <= 8*8)
+             && (V1 == V2)
+             && isFastLibCall( &O, __FILE__, __LINE__) )
+        {
+            if ( le.isVecUniform( V3) ) {
+                snprintf( sf, 256, "%s_scl_v%di%d", hs, num_elems, elem_bitsize);
+            } else {
+                snprintf( sf, 256, "%s_sclmulti_v%di%d", hs, num_elems, elem_bitsize);
+            }
+
+            makeLibCallFast( sf, makeValue( V1, i), makeValue( V3, i), 0, res, i);
+        } else {
+            makeLibCall( "__lccrt_fshl_v", true, O, res, false, i);
+        }
     } else {
         int bitsize = le.getTypeBitsize( TR);
         bool is_intpow2 = isa<IntegerType>( TR) && is_pow2( bitsize);
@@ -4784,23 +4931,63 @@ LccrtFunctionEmitter::makeFmuladd( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
  * Создание операции.
  */
 void
-LccrtFunctionEmitter::makeSqrt( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
+LccrtFunctionEmitter::makeFnameCall( User &O, const char *iname, lccrt_var_ptr res, lccrt_oi_ptr i)
 {
-    Value *V1 = O.getOperand( 0);
-    lccrt_var_ptr a1 = makeValue( V1, i);
-    Type *T1 = V1->getType();
-    std::string func_name = "sqrt";
+    char sf[256];
+    const char *hs = 0;
     CallInst &CI = cast<CallInst>(O);
+    int num_args = CI.arg_size();
+    Value *V1 = O.getOperand( 0);
+    Value *V2 = (num_args == 2) ? O.getOperand( 1) : 0;
+    lccrt_var_ptr a1 = makeValue( V1, i);
+    lccrt_var_ptr a2 = V2 ? makeValue( V2, i) : 0;
+    Type *T1 = V1->getType();
+    std::string func_name = iname;
     Value *CV = CI.getCalledOperand();
     std::string cn = CV->hasName() ? CV->getName().str() : "";
+    std::string namef32 = "llvm.";
+    std::string namef64 = "llvm.";
+    std::string namef80 = "llvm.";
+    int k = -1;
+    struct {
+        int isgnu; // использовать gnu-суффиксы для скалярных версий
+        const char *iname; // название функции в llvm-IR
+        const char *lname; // название быстрой векторной функции
+        const char *bname; // название скалярной функции
+    } funcs[] = {
+        {1, "sqrt",       "fastsqrt",  "sqrt"},
+        {1, "maxnum",     "maxnum",    "fmax"},
+        {1, "minnum",     "minnum",    "fmin"},
+        {1, "fabs",       "fabs",      "fabs"},
+        {0, "is.fpclass", "isfpclass", "isfpclass"},
+        {0, 0}
+    };
 
-    if ( isa<ScalableVectorType>( T1) )
-    {
+    for ( k = 0; funcs[k].iname; ++k ) {
+        if ( func_name == funcs[k].iname ) {
+            break;
+        }
+    }
+
+    if ( !funcs[k].iname ) {
         errorDump( &O);
+    }
 
-    } else if ( isa<FixedVectorType>( T1) )
-    {
-        char sf[256];
+    namef32 = namef32 + funcs[k].iname + ".f32";
+    namef64 = namef64 + funcs[k].iname + ".f64";
+    namef80 = namef80 + funcs[k].iname + ".f80";
+    if ( funcs[k].isgnu ) {
+        hs = "__builtin";
+    } else {
+        hs = "__lccrt_builtin";
+        if ( cn == "llvm.is.fpclass.f80" ) {
+            hs = "__lccrt";
+        }
+    }
+
+    if ( isa<ScalableVectorType>( T1) ) {
+        errorDump( &O);
+    } else if ( isa<FixedVectorType>( T1) ) {
         FixedVectorType *TV1 = static_cast<FixedVectorType *>( T1);
         Type *TVE1 = TV1->getElementType();
         int num_elems = TV1->getNumElements();
@@ -4808,36 +4995,185 @@ LccrtFunctionEmitter::makeSqrt( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
 
         if ( ((elem_size == 4)
               || (elem_size == 8))
-             && ((num_elems * elem_size == 8)
-                 || (num_elems * elem_size == 16))
+             && ((num_elems * elem_size >= 4)
+                 || (num_elems * elem_size <= 128))
              && isFastLibCall( &O, __FILE__, __LINE__) )
         {
-            snprintf( sf, 256, "__lccrt_builtin_fastsqrt_v%df%d",
-                      num_elems, 8*elem_size);
-            makeLibCallFast( sf, a1, 0, 0, res, i);
-        } else
-        {
-            func_name = "__lccrt_" + func_name + "_v";
-            makeLibCall( func_name.c_str(), true, O, res, false, i);
+            snprintf( sf, 256, "__lccrt_builtin_%s_v%df%d",
+                      funcs[k].lname, num_elems, 8*elem_size);
+            makeLibCallFast( sf, a1, a2, 0, res, i);
+        } else {
+            snprintf( sf, 256, "__lccrt_%s_v", funcs[k].iname);
+            makeLibCall( sf, true, O, res, false, i);
+            if ( func_name == "is.fpclass" ) {
+                errorDump( &O);
+            }
         }
-    } else if ( (cn == "llvm.sqrt.f32") )
-    {
-        makeLibCallFast( "__builtin_sqrtf", a1, 0, 0, res, i);
-
-    } else if ( (cn == "llvm.sqrt.f64") )
-    {
-        makeLibCallFast( "__builtin_sqrt", a1, 0, 0, res, i);
-
-    } else if ( (cn == "llvm.sqrt.f80") )
-    {
-        makeLibCallFast( "__builtin_sqrtl", a1, 0, 0, res, i);
-    } else
-    {
+    } else if ( (cn == namef32) ) {
+        snprintf( sf, 256, "%s_%s%s", hs, funcs[k].bname, funcs[k].isgnu ? "f" : "_f32");
+        makeLibCallFast( sf, a1, a2, 0, res, i);
+    } else if ( (cn == namef64) ) {
+        snprintf( sf, 256, "%s_%s%s", hs, funcs[k].bname, funcs[k].isgnu ? "" : "_f64");
+        makeLibCallFast( sf, a1, a2, 0, res, i);
+    } else if ( (cn == namef80) ) {
+        snprintf( sf, 256, "%s_%s%s", hs, funcs[k].bname, funcs[k].isgnu ? "l" : "_f80");
+        makeLibCallFast( sf, a1, a2, 0, res, i);
+    } else {
         errorDump( &O);
     }
 
     return;
-} /* LccrtFunctionEmitter::makeSqrt */
+} /* LccrtFunctionEmitter::makeFnameCall */
+
+/**
+ * Создание операции.
+ */
+void
+LccrtFunctionEmitter::makeOverflowCall( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
+{
+    char sf[256];
+    CallInst &CI = cast<CallInst>(O);
+    int num_args = CI.arg_size();
+    Value *V1 = O.getOperand( 0);
+    Value *V2 = (num_args == 2) ? O.getOperand( 1) : 0;
+    lccrt_var_ptr a1 = makeValue( V1, i);
+    lccrt_var_ptr a2 = V2 ? makeValue( V2, i) : 0;
+    Type *T1 = V1->getType();
+    Value *CV = CI.getCalledOperand();
+    std::string cn = CV->hasName() ? CV->getName().str() : "";
+    int k = -1;
+    bool issmul = false;
+    struct {
+        const char *iname; // название функции в llvm-IR
+        const char *bname; // название скалярной функции
+    } funcs[] = {
+        {"llvm.uadd.with.overflow.",   "uadd_overflow"},
+        {"llvm.sadd.with.overflow.",   "sadd_overflow"},
+        {"llvm.usub.with.overflow.",   "usub_overflow"},
+        {"llvm.ssub.with.overflow.",   "ssub_overflow"},
+        {"llvm.umul.with.overflow.",   "umul_overflow"},
+        {"llvm.smul.with.overflow.",   "smul_overflow"},
+        {0}
+    };
+
+    issmul = (cn.find( "llvm.smul.with.overflow.") == 0);
+
+    for ( k = 0; funcs[k].iname; ++k ) {
+        if ( cn.find( funcs[k].iname) == 0 ) {
+            break;
+        }
+    }
+
+    if ( !funcs[k].iname ) {
+        errorDump( &O);
+    }
+
+    if ( isa<ScalableVectorType>( T1) ) {
+        errorDump( &O);
+    } else if ( isa<FixedVectorType>( T1) ) {
+        errorDump( &O);
+    } else if ( isa<IntegerType>( T1) ) {
+        int elem_bitsize = le.DL.getTypeSizeInBits( T1);
+
+        if ( ((elem_bitsize <= 128) && !issmul)
+             || (elem_bitsize <= 64) )
+        {
+            snprintf( sf, 256, "__lccrt_builtin_%s_i%d",
+                      funcs[k].bname, elem_bitsize);
+            makeLibCallFast( sf, a1, a2, 0, res, i);
+        } else if ( issmul && (elem_bitsize == 128) ) {
+            snprintf( sf, 256, "__lccrt_smul_overflow_128");
+            makeLibCallFast( sf, a1, a2, 0, res, i);
+        } else {
+            errorDump( &O);
+            snprintf( sf, 256, "__lccrt_%s_v", funcs[k].bname);
+            makeLibCall( sf, false, O, res, false, i);
+        }
+    } else {
+        errorDump( &O);
+    }
+
+    return;
+} /* LccrtFunctionEmitter::makeOverflowCall */
+
+/**
+ * Создание операции.
+ */
+void
+LccrtFunctionEmitter::makeSatCall( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
+{
+    char sf[256];
+    CallInst &CI = cast<CallInst>(O);
+    int num_args = CI.arg_size();
+    Value *V1 = O.getOperand( 0);
+    Value *V2 = (num_args == 2) ? O.getOperand( 1) : 0;
+    lccrt_var_ptr a1 = makeValue( V1, i);
+    lccrt_var_ptr a2 = V2 ? makeValue( V2, i) : 0;
+    Type *T1 = V1->getType();
+    Value *CV = CI.getCalledOperand();
+    std::string cn = CV->hasName() ? CV->getName().str() : "";
+    int k = -1;
+    struct {
+        const char *iname; // название функции в llvm-IR
+        const char *bname; // название скалярной функции
+    } funcs[] = {
+        {"llvm.uadd.sat.",   "uadd_sat"},
+        {"llvm.sadd.sat.",   "sadd_sat"},
+        {"llvm.usub.sat.",   "usub_sat"},
+        {"llvm.ssub.sat.",   "ssub_sat"},
+        {"llvm.ushr.sat.",   "ushr_sat"},
+        {"llvm.sshr.sat.",   "sshr_sat"},
+        {0}
+    };
+
+    for ( k = 0; funcs[k].iname; ++k ) {
+        if ( cn.find( funcs[k].iname) == 0 ) {
+            break;
+        }
+    }
+
+    if ( !funcs[k].iname ) {
+        errorDump( &O);
+    }
+
+    if ( isa<ScalableVectorType>( T1) ) {
+        errorDump( &O);
+    } else if ( isa<FixedVectorType>( T1) ) {
+        FixedVectorType *TV1 = static_cast<FixedVectorType *>( T1);
+        Type *TVE1 = TV1->getElementType();
+        int num_elems = TV1->getNumElements();
+        int elem_bitsize = le.DL.getTypeSizeInBits( TVE1);
+        int elem_size = le.DL.getTypeAllocSize( TVE1);
+
+        if ( !isa<IntegerType>( TVE1) ) errorDump( &O);
+        if ( (le.isBitWidthNormal( elem_bitsize)
+              && (elem_bitsize <= 64))
+             && (num_elems*elem_size <= 128) )
+        {
+            snprintf( sf, 256, "__lccrt_builtin_%s_v%di%d",
+                      funcs[k].bname, num_elems, elem_bitsize);
+            makeLibCallFast( sf, a1, a2, 0, res, i);
+        } else {
+            errorDump( &O);
+        }
+    } else if ( isa<IntegerType>( T1) ) {
+        int elem_bitsize = le.DL.getTypeSizeInBits( T1);
+
+        if ( (elem_bitsize <= 128) ) {
+            snprintf( sf, 256, "__lccrt_builtin_%s_i%d",
+                      funcs[k].bname, elem_bitsize);
+            makeLibCallFast( sf, a1, a2, 0, res, i);
+        } else {
+            errorDump( &O);
+            snprintf( sf, 256, "__lccrt_%s_v", funcs[k].bname);
+            makeLibCall( sf, false, O, res, false, i);
+        }
+    } else {
+        errorDump( &O);
+    }
+
+    return;
+} /* LccrtFunctionEmitter::makeSatCall */
 
 /**
  * Создание операции.
@@ -4849,8 +5185,6 @@ LccrtFunctionEmitter::makeIntAbs( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
     lccrt_var_ptr a1 = makeValue( V1, i);
     Type *T1 = V1->getType();
     std::string func_name = "abs";
-    lccrt_type_ptr tu32 = lccrt_type_make_u32( m);
-    lccrt_type_ptr tu64 = lccrt_type_make_u64( m);
     int bitwidth = T1->getPrimitiveSizeInBits();
     bool normal_int = le.isIntBitWidthNormal( T1);
     bool isint = isa<IntegerType>( T1);
@@ -4866,10 +5200,15 @@ LccrtFunctionEmitter::makeIntAbs( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
 
         if ( !isa<IntegerType>( TVE1) ) {
             errorDump( &O);
-        } else if ( ((elem_bitsize == 32)
+        } else if ( ((elem_bitsize == 8)
+                     || (elem_bitsize == 16)
+                     || (elem_bitsize == 32)
                      || (elem_bitsize == 64))
-                    && ((num_elems * elem_bitsize == 8*8)
-                        || (num_elems * elem_bitsize == 16*8))
+                    && ((num_elems * elem_bitsize == 2*8)
+                        || (num_elems * elem_bitsize == 4*8)
+                        || (num_elems * elem_bitsize == 8*8)
+                        || (num_elems * elem_bitsize == 16*8)
+                        || (num_elems * elem_bitsize == 32*8))
                     && isFastLibCall( &O, __FILE__, __LINE__) )
         {
             const char *sns;
@@ -4878,7 +5217,7 @@ LccrtFunctionEmitter::makeIntAbs( User &O, lccrt_var_ptr res, lccrt_oi_ptr i)
             lccrt_var_ptr b1 = 0;
             lccrt_var_ptr p1 = 0;
             std::vector<lccrt_varinit_ptr> zarr( num_elems);
-            lccrt_type_ptr te = (elem_bitsize == 32) ? tu32 : tu64;
+            lccrt_type_ptr te = lccrt_type_make_int( m, elem_bitsize/8, 0);
             lccrt_type_ptr tr = le.makeType( TV1);
 
             for ( int l = 0; l < num_elems; ++l ) {
@@ -4967,11 +5306,8 @@ LccrtFunctionEmitter::makeIntMinMax( std::string mname, User &O,
         if ( !isa<IntegerType>( TVE1) ) {
             errorDump( &O);
         } else if ( ((elem_size == 1) || (elem_size == 2) || (elem_size == 4) || (elem_size == 8))
-                    && ((num_elems * elem_size == 4)
-                        || (num_elems * elem_size == 8)
-                        || (num_elems * elem_size == 16)
-                        || (num_elems * elem_size == 32)
-                        || (num_elems * elem_size == 64))
+                    && ((num_elems * elem_size >= 1)
+                        && (num_elems * elem_size <= 128))
                     && isFastLibCall( &O, __FILE__, __LINE__) )
         {
             snprintf( sf, 256, "__lccrt_builtin_%s_v%di%d",
@@ -5457,8 +5793,6 @@ LccrtFunctionEmitter::makeCall( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
                     || (cn.compare( "llvm.invariant.start.p0i8") == 0)
                     || (cn.compare( "llvm.invariant.end.p0i8") == 0)
                     || (cn.compare( "llvm.prefetch") == 0)
-                    || (cn.compare( "llvm.prefetch.p0") == 0)
-                    || (cn.compare( "llvm.prefetch.p0i8") == 0)
                     || (cn.compare( "llvm.assume") == 0)
                     || (cn.compare( "llvm.experimental.noalias.scope.decl") == 0) )
         {
@@ -5507,8 +5841,38 @@ LccrtFunctionEmitter::makeCall( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
         } else if ( (cn.find( "llvm.ctlz.") == 0) ) {
             makeCtlz( O, res, i);
             return;
+        } else if ( (cn.find( "llvm.fabs.") == 0) ) {
+            makeFnameCall( O, "fabs", res, i);
+            return;
         } else if ( (cn.find( "llvm.sqrt.") == 0) ) {
-            makeSqrt( O, res, i);
+            makeFnameCall( O, "sqrt", res, i);
+            return;
+        } else if ( (cn.find( "llvm.maxnum.") == 0) ) {
+            makeFnameCall( O, "maxnum", res, i);
+            return;
+        } else if ( (cn.find( "llvm.minnum.") == 0) ) {
+            makeFnameCall( O, "minnum", res, i);
+            return;
+        } else if ( (cn.find( "llvm.is.fpclass") == 0) ) {
+            makeFnameCall( O, "is.fpclass", res, i);
+            return;
+        } else if ( (cn.find( "llvm.uadd.with.overflow.") == 0)
+                    || (cn.find( "llvm.sadd.with.overflow.") == 0) 
+                    || (cn.find( "llvm.usub.with.overflow.") == 0) 
+                    || (cn.find( "llvm.ssub.with.overflow.") == 0) 
+                    || (cn.find( "llvm.umul.with.overflow.") == 0) 
+                    || (cn.find( "llvm.smul.with.overflow.") == 0) )
+        {
+            makeOverflowCall( O, res, i);
+            return;
+        } else if ( (cn.find( "llvm.uadd.sat.") == 0)
+                    || (cn.find( "llvm.sadd.sat.") == 0) 
+                    || (cn.find( "llvm.usub.sat.") == 0) 
+                    || (cn.find( "llvm.ssub.sat.") == 0) 
+                    || (cn.find( "llvm.ushl.sat.") == 0) 
+                    || (cn.find( "llvm.sshl.sat.") == 0) )
+        {
+            makeSatCall( O, res, i);
             return;
         } else if ( (cn.find( "llvm.abs.") == 0) ) {
             makeIntAbs( O, res, i);
@@ -5539,7 +5903,9 @@ LccrtFunctionEmitter::makeCall( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
         {
             lccrt_oper_new_move( f, le.makeVarConstHex( tb, 0), res, i);
             return;
-
+        } else if ( (cn.compare( "llvm.prefetch.p0") == 0) ) {
+            num_args = 1;
+            args[0] = makeCallBuiltinAddr( CF, ct, cnl);
         } else if ( (cn.compare( "llvm.memcpy.p0.p0.i32") == 0)
                     || (cn.compare( "llvm.memcpy.p0.p0.i64") == 0)
                     || (cn.compare( "llvm.memmove.p0.p0.i64") == 0)
@@ -5585,20 +5951,7 @@ LccrtFunctionEmitter::makeCall( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
                     || (cn == "llvm.powi.f64.i32")
                     || (cn == "llvm.powi.f80")
                     || (cn == "llvm.powi.f80.i32")
-                    || is_name_suff_stdint( cns, "llvm.uadd.with.overflow")
-                    || is_name_suff_stdint( cns, "llvm.sadd.with.overflow")
                     || (cn == "llvm.sadd.with.overflow.i65")
-                    || is_name_suff_stdint( cns, "llvm.usub.with.overflow")
-                    || is_name_suff_stdint( cns, "llvm.ssub.with.overflow")
-                    || is_name_suff_stdint( cns, "llvm.umul.with.overflow")
-                    || is_name_suff_stdint( cns, "llvm.smul.with.overflow")
-                    || is_name_suff_stdint( cns, "llvm.uadd.sat")
-                    || is_name_suff_stdint( cns, "llvm.sadd.sat")
-                    || is_name_suff_stdint( cns, "llvm.usub.sat")
-                    || is_name_suff_stdint( cns, "llvm.ssub.sat")
-                    || is_name_suff_stdint( cns, "llvm.umul.sat")
-                    || is_name_suff_stdint( cns, "llvm.smul.sat")
-                    || is_name_suff_stdfloat( cns, "llvm.is.fpclass")
                     || is_name_suff_stdfloat( cns, "llvm.pow")
                     || is_name_suff_stdfloat( cns, "llvm.minnum")
                     || is_name_suff_stdfloat( cns, "llvm.maxnum")
@@ -5606,8 +5959,7 @@ LccrtFunctionEmitter::makeCall( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
         {
             args[0] = makeCallBuiltinAddr( CF, CT, cnl, 2);
 
-        } else if ( is_name_suff_stdfloat( cns, "llvm.fabs")
-                    || is_name_suff_stdfloat( cns, "llvm.exp")
+        } else if ( is_name_suff_stdfloat( cns, "llvm.exp")
                     || is_name_suff_stdfloat( cns, "llvm.exp2")
                     || is_name_suff_stdfloat( cns, "llvm.ceil")
                     || is_name_suff_stdfloat( cns, "llvm.floor")
@@ -5661,6 +6013,7 @@ LccrtFunctionEmitter::makeCall( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
     } else
     {
         lccrt_type_ptr a0ty = 0;
+        lccrt_type_ptr b0ty = 0;
 
         ct = ct ? ct : le.makeType( FTy);
 
@@ -5669,10 +6022,17 @@ LccrtFunctionEmitter::makeCall( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
         }
 
         a0ty = lccrt_var_get_type( args[0]);
+        b0ty = lccrt_type_get_parent( a0ty);
         if ( !lccrt_type_is_pointer( a0ty) ) {
             assert( 0);
-        } else if ( !lccrt_type_is_function( lccrt_type_get_parent( a0ty)) ) {
+        } else if ( !lccrt_type_is_function( b0ty) ) {
             args[0] = makeBitcastPtr( args[0], lccrt_type_make_ptr_type( ct), i);
+        } else {
+            lccrt_type_ptr c0ty = lccrt_type_get_parent( b0ty);
+
+            if ( res && lccrt_type_is_void( c0ty) ) {
+                args[0] = makeBitcastPtr( args[0], lccrt_type_make_ptr_type( ct), i);
+            }
         }
 
         for ( unsigned k = 0; k < num_args; ++k )
@@ -5813,9 +6173,10 @@ LccrtFunctionEmitter::makeResume( const Instruction &O, lccrt_v_ptr res, lccrt_o
  * Преобразование asm-модидфикатора.
  */
 std::string
-LccrtFunctionEmitter::evalAsmConstraint( std::string ac) {
+LccrtFunctionEmitter::evalAsmConstraint( std::string ac, std::string &asmreg) {
     std::string r = "";
 
+    asmreg = "";
     if ( ac.empty() ) r= "";
     else if ( is_number( ac.c_str()) ) r = ac;
     else if ( (ac.compare( "r") == 0) ) r = "r";
@@ -5832,9 +6193,10 @@ LccrtFunctionEmitter::evalAsmConstraint( std::string ac) {
 
         if ( s[0] == '{' ) {
             int off = 1;
-            if ( is_e2k_reg( s, off)
+            if ( is_e2k_reg( s, off, asmreg)
                  && (s[off] == '}')
-                 && (s[off+1] == 0) ) {
+                 && (s[off+1] == 0) )
+            {
                 //r = ac.substr( 1, off - 1);
                 r = "r";
             }
@@ -5849,9 +6211,11 @@ LccrtFunctionEmitter::evalAsmConstraint( std::string ac) {
  * завершился не успешно.
  */
 std::string
-LccrtFunctionEmitter::evalAsmConstraintVector( const InlineAsm::ConstraintCodeVector &Codes) {
+LccrtFunctionEmitter::evalAsmConstraintVector( const InlineAsm::ConstraintCodeVector &Codes,
+                                               std::string &asmreg) {
     std::string r;
 
+    asmreg = "";
     if ( (Codes.size() != 1) ) {
         bool r_code = false;
 
@@ -5875,7 +6239,7 @@ LccrtFunctionEmitter::evalAsmConstraintVector( const InlineAsm::ConstraintCodeVe
             r = "";
         }
     } else {
-        r = evalAsmConstraint( Codes[0]);
+        r = evalAsmConstraint( Codes[0], asmreg);
     }
 
     return (r);
@@ -5974,7 +6338,162 @@ isConstraintNumber( const std::vector<std::string> &codes, int &index) {
 } /* isConstraintNumber */
 
 /**
- * Создание аргументов операции.
+ * Проверка шаблона ${N:X}, где N - число, а X - символ.
+ */
+static bool
+isParamWithModifier( const char *s, int &number, char &modifier, int &length) {
+    bool r = false;
+
+    if ( (s[0] == '$') && (s[1] == '{') ) {
+        char *p = 0;
+        uint64_t n = strtoul( s + 2, &p, 10);
+
+        if ( (s < p) && (p[0] == ':') && isalpha( p[1]) && (p[2] == '}') ) {
+            r = true;
+            number = n;
+            modifier = p[1];
+            length = p - s + 3;
+        }
+    }
+
+    return (r);
+} /* isParamWithModifier */
+
+std::string
+LccrtFunctionEmitter::preprocessAsmText( std::string asm_text) {
+    std::string s;
+    char buff[256];
+
+    for ( unsigned l = 0; l < asm_text.size(); ++l ) {
+        std::string s_arg;
+        int l_next = -1;
+        int sym_curr = asm_text[l];
+        int sym_next = (l + 1 < asm_text.size()) ? asm_text[l+1] : -1;
+        int number = 0;
+        char modifier = 0;
+        int len = 0;
+
+        if ( parseAsmInlineArg( asm_text.c_str() + l, l_next, s_arg) ) {
+            assert( l_next >= 2);
+            l += l_next - 1;
+            s += s_arg;
+        } else if ( is_str_head( asm_text.c_str() + l, "$$") ) {
+            l += 1;
+            s += "$";
+        } else if ( is_str_head( asm_text.c_str() + l, "$(") ) {
+            l += 1;
+            s += "{";
+        } else if ( is_str_head( asm_text.c_str() + l, "$)") ) {
+            l += 1;
+            s += "}";
+        } else if ( is_str_head( asm_text.c_str() + l, "$|") ) {
+            l += 1;
+            s += "|";
+        } else if ( is_str_head( asm_text.c_str() + l, "%#") ) {
+            l += 1;
+            s += "%#";
+        } else if ( isParamWithModifier( asm_text.c_str() + l, number, modifier, len) ) {
+            l += len - 1;
+            snprintf( buff, 256, "%%%c%d", modifier, number);
+            s += buff;
+        } else if ( (sym_curr == '%')
+                    && (sym_next >= 0)
+                    && !isdigit( sym_next)
+                    && ((l == 0) || (asm_text[l-1] != '%')) )
+        {
+            s += "%%";
+        } else if ( is_str_head( asm_text.c_str() + l, "${:wbs}") ) {
+            l += strlen( "${:wbs}") - 1;
+            s += "%#";
+        } else {
+            s += asm_text[l];
+        }
+    }
+
+    return (s);
+} /* LccrtFunctionEmitter::preprocessAsmText */
+
+std::string
+LccrtFunctionEmitter::preprocessConstraint( const CallInst &O, InlineAsm::ConstraintInfo &j,
+                                            std::string &asmreg)
+{
+    std::string sj = "";
+
+    asmreg = "";
+    if ( !((j.Type == InlineAsm::isOutput)
+           || (j.Type == InlineAsm::isInput)
+           || (j.Type == InlineAsm::isClobber)) )
+    {
+        errorDump( &O);
+    }
+
+    if ( j.isCommutative || j.currentAlternativeIndex ) {
+        errorDump( &O);
+    }
+
+    if ( j.isIndirect ) {
+        if ( j.Type == InlineAsm::isClobber ) errorDump( &O);
+    }
+
+    if ( !j.isMultipleAlternative ) {
+        if ( j.Codes.empty() ) {
+            errorDump( &O);
+        }
+
+        sj = evalAsmConstraintVector( j.Codes, asmreg);
+        if ( sj.empty() ) {
+            if ( (j.Type == InlineAsm::isInput) || (j.Type == InlineAsm::isOutput) ) {
+                errorDump( &O);
+            }
+        }
+    } else {
+        if ( !j.Codes.empty() || j.multipleAlternatives.empty() ) {
+            errorDump( &O);
+        }
+
+        for ( auto jc : j.multipleAlternatives ) {
+            if ( jc.MatchingInput >= 0 ) {
+                errorDump( &O);
+            } else {
+                std::string tj = evalAsmConstraintVector( jc.Codes, asmreg);
+
+                if ( tj.empty() || !asmreg.empty() ) {
+                    errorDump( &O);
+                } else {
+                    sj += tj;
+                }
+            }
+        }
+    }
+
+    return (sj);
+} /* LccrtFunctionEmitter::preprocessConstraint */
+
+/**
+ * Создание аргумента операции.
+ */
+lccrt_var_ptr
+LccrtFunctionEmitter::makeAsmInlineOperand( const CallInst &O, int karg, lccrt_oi_ptr i)
+{
+    lccrt_var_ptr v = 0;
+    AttributeList Attrs = O.getAttributes();
+    AttributeSet ArgAttrs = Attrs.getParamAttrs( karg);
+
+    v = makeValue( O.getOperand( karg), i);
+    if ( ArgAttrs.hasAttribute( Attribute::ElementType) ) {
+        if ( O.getOperand( karg)->getType()->isPointerTy() ) {
+            Type *Ety = O.getParamElementType( karg);
+            lccrt_type_ptr pty = lccrt_type_make_ptr_type( le.makeType( Ety));
+
+            v = lccrt_oper_get_res( lccrt_oper_new_bitcast( f, v, pty, 0, i));
+        }
+    }
+
+    return (v);
+} /* LccrtFunctionEmitter::makeAsmInlineOperand */
+
+/**
+ * Создание операции.
  */
 void
 LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt_oi_ptr i)
@@ -6001,54 +6520,17 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
     int num_ins = 0;
     int num_dirouts = 0;
     int num_indirouts = 0;
+    bool needclobcall = false;
 
     //assert( !IA->isAlignStack());
     assert( IA->getDialect() == InlineAsm::AD_ATT);
-    snprintf( buf, 256, "' tag:%p\n", (const void *)IA);
+    snprintf( buf, 256, "' tag:%p\n", (const void *)&O);
     asm_text += buf;
     asm_text += IA->getAsmString();
     civstr.resize( civ.size());
 
-    //if ( (civ.begin() != civ.end()) )
-    {
-        std::string s;
-
-        for ( unsigned l = 0; l < asm_text.size(); ++l ) {
-            std::string s_arg;
-            int l_next = -1;
-            int sym_curr = asm_text[l];
-            int sym_next = (l + 1 < asm_text.size()) ? asm_text[l+1] : -1;
-
-            if ( parseAsmInlineArg( asm_text.c_str() + l, l_next, s_arg) ) {
-                assert( l_next >= 2);
-                l += l_next - 1;
-                s += s_arg;
-            } else if ( is_str_head( asm_text.c_str() + l, "$$") ) {
-                l += 1;
-                s += "$";
-            } else if ( is_str_head( asm_text.c_str() + l, "$(") ) {
-                l += 1;
-                s += "{";
-            } else if ( is_str_head( asm_text.c_str() + l, "$)") ) {
-                l += 1;
-                s += "}";
-            } else if ( is_str_head( asm_text.c_str() + l, "%#") ) {
-                l += 1;
-                s += "%#";
-            } else if ( (sym_curr == '%')
-                        && (sym_next >= 0)
-                        && !isdigit( sym_next)
-                        && ((l == 0)
-                            || (asm_text[l-1] != '%')) ) {
-                s += "%%";
-            } else {
-                s += asm_text[l];
-            }
-        }
-
-        asm_text = s;
-        asm_text += "!";
-    }
+    asm_text = preprocessAsmText( asm_text);
+    asm_text += "!";
 
     if ( (num_rargs > 0) ) {
         if ( !res ) {
@@ -6058,57 +6540,16 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
 
     //dbgs() << O << "\n";
 
-    for ( j = civ.begin(), j1 = civ.end(); j != j1; ++j )
-    {
+    for ( j = civ.begin(), j1 = civ.end(); j != j1; ++j ) {
         std::string sj;
+        std::string asmreg;
         int nargs = num_dirouts + num_indirouts + num_ins;
+        InlineAsm::ConstraintInfo cinfo = *j;
 
-        if ( !((j->Type == InlineAsm::isOutput)
-               || (j->Type == InlineAsm::isInput)
-               || (j->Type == InlineAsm::isClobber)) ) {
-            errorDump( &O);
-        }
-
-        if ( j->isCommutative
-             || j->currentAlternativeIndex ) {
-            errorDump( &O);
-        }
-
-        if ( j->isIndirect ) {
-            if ( j->Type == InlineAsm::isClobber ) errorDump( &O);
-        }
-
-        if ( !j->isMultipleAlternative ) {
-            if ( j->Codes.empty() ) {
-                errorDump( &O);
-            }
-
-            sj = evalAsmConstraintVector( j->Codes);
-            if ( sj.empty() ) {
-                if ( (j->Type == InlineAsm::isInput)
-                     || (j->Type == InlineAsm::isOutput) ) {
-                    errorDump( &O);
-                }
-            }
-        } else {
-            if ( !j->Codes.empty()
-                 || j->multipleAlternatives.empty() ) {
-                errorDump( &O);
-            }
-
-            for ( auto jc : j->multipleAlternatives ) {
-                if ( jc.MatchingInput >= 0 ) {
-                    errorDump( &O);
-                } else {
-                    std::string tj = evalAsmConstraintVector( jc.Codes);
-
-                    if ( tj.empty() ) {
-                        errorDump( &O);
-                    } else {
-                        sj += tj;
-                    }
-                }
-            }
+        sj = preprocessConstraint( O, cinfo, asmreg);
+        if ( asmreg.find( "ctpr") == 0 ) {
+            asmreg = "";
+            needclobcall = true;
         }
 
         if ( j->Type == InlineAsm::isOutput ) {
@@ -6122,7 +6563,8 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
 
                 if ( match >= (int)civ.size()
                      || !isConstraintNumber( civ[match].Codes, arg_ind)
-                     || (arg_ind != k - 1) ) {
+                     || (arg_ind != k - 1) )
+                {
                     errorDump( &O);
                 }
             }
@@ -6130,8 +6572,9 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
             if ( j->isIndirect ) {
                 num_indirouts++;
                 asm_text += "`+";
+                if ( !asmreg.empty() ) errorDump( &O);
                 if ( j->isEarlyClobber ) errorDump( &O);
-                args[k] = makeValue( O.getOperand( num_indirouts - 1));
+                args[k] = makeAsmInlineOperand( O, num_indirouts - 1, i);
                 if ( (sj == "mr") || (sj == "rm") ) {
                     //sj = "r";
                     sj = "m";
@@ -6143,13 +6586,17 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
                 }
             } else {
                 lccrt_type_ptr te = le.makeType( T2 ? T2->getElementType( num_dirouts) : T1);
+                lccrt_var_ptr vres = makeVarRes( te);
                 lccrt_oper_ptr vptr = 0;
 
+                // Для записи результата передаем указатель на операнд. Передача
+                // указателя на операнд должна рассматриваться как формальная.
                 num_dirouts++;
                 asm_text += "`=";
                 if ( j->isEarlyClobber ) asm_text += "&";
-                rvars[num_dirouts - 1] = makeVarRes( te);
-                vptr = lccrt_oper_new_varptr( f, rvars[num_dirouts - 1], 0, i);
+                if ( !asmreg.empty() ) lccrt_var_set_asmreg( vres, asmreg.c_str());
+                rvars[num_dirouts - 1] = vres;
+                vptr = lccrt_oper_new_varptr( f, vres, 0, i);
                 args[k] = lccrt_oper_get_res( vptr);
             }
 
@@ -6169,7 +6616,8 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
                 if ( !((0 <= arg_ind)
                        && (arg_ind < (int)civ.size())
                        && (arg_ind < num_dirouts + num_indirouts)
-                       && (civ[arg_ind].MatchingInput == nargs)) ) {
+                       && (civ[arg_ind].MatchingInput == nargs)) )
+                {
                     errorDump( &O);
                 }
             }
@@ -6178,6 +6626,7 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
             if ( j->isIndirect ) {
                 std::string lj = sj;
 
+                if ( !asmreg.empty() ) errorDump( &O);
                 if ( arg_ind >= 0 ) {
                     lj = civstr[arg_ind];
                 }
@@ -6197,7 +6646,11 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
             }
 
             asm_text += "`" + sj + "`";
-            args[k] = makeValue( O.getOperand( num_indirouts + num_ins - 1), i);
+            args[k] = makeAsmInlineOperand( O, num_indirouts + num_ins - 1, i);
+            if ( !asmreg.empty() ) {
+                args[k] = lccrt_oper_get_res( lccrt_oper_new_move( f, args[k], 0, i));
+                lccrt_var_set_asmreg( args[k], asmreg.c_str());
+            }
             fte[k-1] = lccrt_var_get_type( args[k]);
             k++;
         } else if ( (j->Type == InlineAsm::isClobber) ) {
@@ -6205,7 +6658,8 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
 
             civstr[nargs] = clob;
             if ( !((le.archTriple.getArch() == Triple::e2k32)
-                   || (le.archTriple.getArch() == Triple::e2k64)) ) {
+                   || (le.archTriple.getArch() == Triple::e2k64)) )
+            {
                 asm_text += "?" + clob + "?";
             } else {
                 if ( !is_call_clobber ) {
@@ -6218,8 +6672,11 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
                      || (clob.rfind( "pred", 0) == 0)
                      || (clob.rfind( "b[", 0) == 0)
                      || (clob.rfind( "ctpr", 0) == 0)
-                     || (clob.rfind( "memory", 0) == 0) ) {
+                     || (clob.rfind( "memory", 0) == 0) )
+                {
                     asm_text += "?" + clob + "?";
+                } else {
+                    if ( !asmreg.empty() ) errorDump( &O);
                 }
             }
         } else {
@@ -6227,10 +6684,18 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
         }
     }
 
+    if ( needclobcall ) {
+        if ( !is_call_clobber ) {
+            is_call_clobber = true;
+            asm_text += "?call?";
+        }
+    }
+
     for ( int kt = num_dirouts; kt < k - 1; ++kt ) {
-        if ( lccrt_type_is_pointer( fte[kt]) && (fte[kt] != tpv) ) {
+        if ( 0 && lccrt_type_is_pointer( fte[kt]) && (fte[kt] != tpv) ) {
             lccrt_oper_ptr p2p = lccrt_oper_new_bitcast( f, args[kt+1], tpv, 0, i);
 
+            dbgs() << "bitcast : " << kt << "\n";
             args[kt + 1] = lccrt_oper_get_res( p2p);
             fte[kt] = tpv;
         }
@@ -6240,17 +6705,22 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
     args[0] = lccrt_var_new_asm( f, ct, asm_text.c_str(), 0);
     asm_oper = lccrt_oper_new_call( f, ct, k, args, 0, 0, 0, i);
     if ( IA->hasSideEffects() ) lccrt_oper_set_volatile( asm_oper, 1);
+    if ( IA->isAsmInline() ) lccrt_oper_set_asminline( asm_oper, 1);
+
     if ( num_rargs != num_dirouts ) errorDump( &O);
 
+    // Преобразуем выходные параметры в результат из llvm-IR.
     for ( int nr = 0; nr < num_rargs; ++nr ) {
         if ( T2 ) {
             lccrt_var_ptr wargs[3];
 
+            // Возвращается набор результатов, который надо упаковать в структуру.
             wargs[0] = res;
             wargs[1] = rvars[nr];
             wargs[2] = le.makeVarConst( tu64, lccrt_varinit_new_scalar( tu64, nr));
             lccrt_oper_new_elemwrite( f, 3, wargs, i);
         } else {
+            // Возвращается один скалярный результат.
             assert( num_rargs == 1);
             lccrt_oper_new_move( f, rvars[nr], res, i);
         }
@@ -6269,46 +6739,33 @@ LccrtFunctionEmitter::makeAsmInline( const CallInst &O, lccrt_var_ptr res, lccrt
 void
 LccrtFunctionEmitter::makeReadWriteRegister( const CallInst &CI, lccrt_var_ptr res, lccrt_oi_ptr i)
 {
-    char buf[256];
     Value *reg = CI.getArgOperand( 0);
     MDNode *md = cast<MDNode>( cast<MetadataAsValue>( reg)->getMetadata());
     MDString *ms = dyn_cast<MDString>( md->getOperand( 0));
-    std::string sreg = std::string( "%") + ms->getString().data();
+    std::string sreg = ms->getString().data();
     std::string name = std::string( CI.getCalledOperand()->getName());
     bool is_read = false;
     lccrt_type_ptr ti = 0;
     lccrt_type_ptr ti32 = lccrt_type_make_u32( m);
     lccrt_type_ptr ti64 = lccrt_type_make_u64( m);
-    std::string asm_text = "";
     lccrt_var_ptr v = 0;
-    lccrt_var_ptr args[2] = {};
-    lccrt_type_ptr ct = 0;
+
+    if ( sreg[0] != '%' ) sreg = "%" + sreg;
 
     if ( (name == "llvm.read_register.i32") )       { is_read = true;  ti = ti32; }
     else if ( (name == "llvm.read_register.i64") )  { is_read = true;  ti = ti64; }
     else if ( (name == "llvm.write_register.i32") ) { is_read = false; ti = ti32; }
     else if ( (name == "llvm.write_register.i64") ) { is_read = false; ti = ti64; }
-    else { assert( 0); }
-
-    snprintf( buf, 256, "' tag:%p\n", (const void *)&CI);
-    asm_text += buf;
-
-    snprintf( buf, 256, "add%s %%%s, 0, %%%s!", (ti == ti32) ? "s" : "d",
-              is_read ? sreg.c_str() : "0", is_read ? "0" : sreg.c_str());
-    asm_text += buf;
-
-    snprintf( buf, 256, "`%sr`?%s?", is_read ? "" : "=r", sreg.c_str());
-    asm_text += buf;
+    else { errorDump( &CI); }
 
     v = lccrt_var_new_local( f, ti, 0);
-    ct = lccrt_type_make_func( lccrt_type_make_void( m), 1, &ti);
-    args[0] = lccrt_var_new_asm( f, ct, asm_text.c_str(), 0);
-    args[1] = v;
-    lccrt_oper_new_call( f, ct, 2, args, 0, 0, 0, i);
-
-    if ( is_read )
-    {
+    lccrt_var_set_asmreg( v, sreg.c_str());
+    if ( is_read ) {
         lccrt_oper_new_move( f, v, res, i);
+    } else {
+        lccrt_var_ptr a0 = makeValue( CI.getArgOperand( 1));
+
+        lccrt_oper_new_move( f, a0, v, i);
     }
 
     return;
@@ -6377,6 +6834,7 @@ void
 LccrtFunctionEmitter::makeCmp( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
 {
     std::string sn;
+    char sf[256];
     const char *sns = 0;
     const CmpInst &CI = cast<CmpInst>(O);
     lccrt_oper_ptr oper = 0;
@@ -6389,6 +6847,8 @@ LccrtFunctionEmitter::makeCmp( const Instruction &O, lccrt_v_ptr res, lccrt_oi_p
     Value *V1 = CI.getOperand( 0);
     Value *V2 = CI.getOperand( 1);
     Type *T1 = V1->getType();    
+    const char *hs0 = "__lccrt_builtin";
+    const char *hs = "__lccrt_builtin_cmp";
 
     cn = getCmpLccrtName( CI.getPredicate(), &sns);
     if ( sns ) {
@@ -6418,11 +6878,11 @@ LccrtFunctionEmitter::makeCmp( const Instruction &O, lccrt_v_ptr res, lccrt_oi_p
 
     } else if ( isa<IntegerType>( T1) )
     {
-        if ( (le.DL.getTypeAllocSize( T1) <= 8) )
-        {
+        int bitsize = le.DL.getTypeSizeInBits( T1);
+
+        if ( (bitsize <= 64) ) {
             lccrt_var_ptr a1 = makeValue( V1, i);
             lccrt_var_ptr a2 = makeValue( V2, i);
-            uint64_t bitsize = le.DL.getTypeSizeInBits( T1);
             lccrt_type_ptr tur = (bitsize <= 32) ? tu32 : tu64;
 
             a1 = lccrt_oper_get_res( makeBitcastNIntToInt( bitsize, a1, 0, i));
@@ -6444,30 +6904,49 @@ LccrtFunctionEmitter::makeCmp( const Instruction &O, lccrt_v_ptr res, lccrt_oi_p
 
             n = lccrt_varinit_new_scalar( lccrt_type_make_u32( m), cn);
             oper = lccrt_oper_new_cmp( f, n, a1, a2, res, i);
-        } else
-        {
+
+        } else if ( (bitsize <= 128) && (cn == LCCRT_CMP_EQ) ) {
+            snprintf( sf, 256, "%s_eq_i_i%d", hs, bitsize);
+            makeLibCallFast( sf, O, res, i);
+        } else if ( (bitsize <= 128) && (cn == LCCRT_CMP_LT_U) ) {
+            snprintf( sf, 256, "%s_lt_u_i%d", hs, bitsize);
+            makeLibCallFast( sf, O, res, i);
+        } else {
             sn = "__lccrt_cmp_n" + sn;
             makeLibCall( sn.c_str(), false, CI, res, false, i);
         }
-    } else if ( isa<FixedVectorType>( T1) )
-    {
-        char sf[256];
+    } else if ( isa<FixedVectorType>( T1) ) {
         FixedVectorType *TV1 = static_cast<FixedVectorType *>( T1);
         Type *TVE1 = TV1->getElementType();
         int num_elems = TV1->getNumElements();
+        int bytesize = le.DL.getTypeAllocSize( T1);
         int elem_size = le.DL.getTypeAllocSize( TVE1);
+        int elem_bitsize = le.DL.getTypeSizeInBits( TVE1);
 
-        if ( (TVE1->isFloatingPointTy()
-              && ((elem_size == 4)
-                  || (elem_size == 8)))
-             || (TVE1->isIntegerTy()
-                 && le.isIntBitWidthNormal( TVE1)
-                 && (elem_size <= 8))
-             || (TVE1->isPointerTy()) )
+        if ( TVE1->isIntegerTy()
+             && (elem_bitsize <= 64)
+             && (bytesize <= 8*8)
+             && isFastLibCall( &O, __FILE__, __LINE__) )
         {
-            if ( ((num_elems * elem_size == 8)
-                  || (num_elems * elem_size == 16)
-                  || (num_elems * elem_size == 32))
+            lccrt_var_ptr v0 = lccrt_var_new_local( f, le.makeType( T1), 0);
+
+            snprintf( sf, 256, "%s%s_v%di%d", hs, sn.c_str(), num_elems, elem_bitsize);
+            makeLibCallFast( sf, CI, v0, i);
+
+            snprintf( sf, 256, "%s_trunc_v%di%di1", hs0, num_elems, elem_bitsize);
+            makeLibCallFast( sf, v0, 0, 0, res, i);
+
+        } else if ( (TVE1->isFloatingPointTy()
+                     && ((elem_bitsize == 32)
+                         || (elem_bitsize == 64)
+                         || (elem_bitsize == 80)))
+                    || (TVE1->isIntegerTy()
+                        && le.isIntBitWidthNormal( TVE1)
+                        && (elem_size <= 8))
+                    || (TVE1->isPointerTy()) )
+        {
+            if ( (num_elems * elem_size >= 1)
+                 && (num_elems * elem_size <= 128)
                  && isFastLibCall( &O, __FILE__, __LINE__) )
             {
                 lccrt_type_ptr tye = lccrt_type_make_int( m, elem_size, 0);
@@ -6476,11 +6955,12 @@ LccrtFunctionEmitter::makeCmp( const Instruction &O, lccrt_v_ptr res, lccrt_oi_p
                 char suff = TVE1->isFloatingPointTy() ? 'f' : 'i';
 
                 snprintf( sf, 256, "__lccrt_builtin_cmp%s_v%d%c%d",
-                          sn.c_str(), num_elems, suff, 8*elem_size);
+                          sn.c_str(), num_elems, suff, elem_bitsize);
                 makeLibCallFast( sf, CI, v0, i);
+                lvcmps.insert( PairValueToVar( &CI, v0));
 
                 snprintf( sf, 256, "__lccrt_builtin_trunc_v%di%di1",
-                          num_elems, 8*elem_size);
+                          num_elems, (elem_bitsize == 80) ? 128 : elem_bitsize);
                 makeLibCallFast( sf, v0, 0, 0, res, i);
             } else {
                 sn = "__lccrt_cmp_v" + sn;
@@ -6512,8 +6992,10 @@ LccrtFunctionEmitter::makeLoadStore( Instruction &O, lccrt_v_ptr res, lccrt_oi_p
 {
     lccrt_var_ptr a = 0;
     lccrt_var_ptr b = 0;
+    lccrt_var_ptr c = 0;
     lccrt_oper_ptr r = 0;
     lccrt_type_ptr tp = 0;
+    lccrt_type_ptr tu64 = lccrt_type_make_u64( m);
     const LoadInst *LD = dyn_cast<LoadInst>( &O);
     const StoreInst *ST = dyn_cast<StoreInst>( &O);
     AtomicOrdering ord = LD ? LD->getOrdering() : ST->getOrdering();
@@ -6538,7 +7020,44 @@ LccrtFunctionEmitter::makeLoadStore( Instruction &O, lccrt_v_ptr res, lccrt_oi_p
             b = makeValue( ST->getOperand( 0), i);
             tp = lccrt_type_make_ptr_type( lccrt_var_get_type( b));
             a = makeValuePtrcast( ST->getOperand( 1), tp, i);
-            r = lccrt_oper_new_store( f, a, b, i);
+            if ( !isa<FixedVectorType>( T0) ) {
+                r = lccrt_oper_new_store( f, a, b, i);
+            } else {
+                char sf[256];
+                char tsym = 0;
+                bool ismemmove = false;
+                FixedVectorType *TV = static_cast<FixedVectorType *>( T0);
+                Type *TVE = TV->getElementType();
+                int num_elems = TV->getNumElements();
+                int elem_bitsize = le.DL.getTypeSizeInBits( TVE);
+
+                if ( is_atomic || is_volatile )
+                {
+                    errorDump( &O);
+                } else if ( (num_elems*elem_bitsize > 1024) || (elem_bitsize > 64) ) {
+                    ismemmove = true;
+                } else if ( TVE->isIntegerTy() ) {
+                    tsym = 'i';
+                } else if ( TVE->isFloatingPointTy() ) {
+                    tsym = 'f';
+                } else if ( TVE->isPointerTy() ) {
+                    tsym = 'p';
+                } else {
+                    errorDump( &O);
+                }
+
+                if ( ismemmove ) {
+                    c = le.makeVarConstHex( tu64, le.DL.getTypeAllocSize( TV));
+                    b = lccrt_oper_get_res( lccrt_oper_new_varptr( f, b, 0, i));
+                    makeLibCallFast( "__builtin_memmove", a, b, c, 0, i);
+                    r = lccrt_oper_iterator_get_prev( i);
+                } else {
+                    snprintf( sf, 256, "__lccrt_builtin_store_v%d%c%d",
+                              num_elems, tsym, elem_bitsize);
+                    makeLibCallFast( sf, a, b, 0, 0, i);
+                    r = lccrt_oper_iterator_get_prev( i);
+                }
+            }
         }
     } else {
         lccrt_var_ptr p = 0;
@@ -6603,10 +7122,14 @@ LccrtFunctionEmitter::makeVecbitRepack( Instruction &O, Type *T, bool ispack,
     lccrt_oper_ptr o1, o2;
     lccrt_var_ptr pa, pr, ne, be;
     const char *opname;
+    char sn[256];
     lccrt_type_ptr tu64 = lccrt_type_make_u64( m);
     lccrt_type_ptr tpv = lccrt_type_make_pvoid( m);
     FixedVectorType *TV = dyn_cast<FixedVectorType>( T);
     int elem_bitsize = le.DL.getTypeSizeInBits( TV->getElementType());
+    int bytesize = le.DL.getTypeAllocSize( TV);
+    int num_elems = TV->getNumElements();
+    const char *hs = "__lccrt_builtin";
 
     assert( le.isTypeNonStdVector( T));
     if ( ispack ) {
@@ -6615,15 +7138,20 @@ LccrtFunctionEmitter::makeVecbitRepack( Instruction &O, Type *T, bool ispack,
         opname = "__lccrt_vecbitunpack";
     }
 
-    o1 = lccrt_oper_new_varptr( f, a, 0, i);
-    o2 = lccrt_oper_new_varptr( f, res, 0, i);
-    o1 = lccrt_oper_new_bitcast( f, lccrt_oper_get_res( o1), tpv, 0, i);
-    o2 = lccrt_oper_new_bitcast( f, lccrt_oper_get_res( o2), tpv, 0, i);
-    pa = lccrt_oper_get_res( o1);
-    pr = lccrt_oper_get_res( o2);
-    ne = le.makeVarConstHex( tu64, TV->getNumElements());
-    be = le.makeVarConstHex( tu64, elem_bitsize);
-    makeLibCallFast( opname, {pr, pa, ne, be}, 0, i);
+    if ( ispack && (bytesize <= 8*8) ) {
+        snprintf( sn, 256, "%s_vecbitpack_v%di%d", hs, num_elems, elem_bitsize);
+        makeLibCallFast( sn, a, 0, 0, res, i);
+    } else {
+        o1 = lccrt_oper_new_varptr( f, a, 0, i);
+        o2 = lccrt_oper_new_varptr( f, res, 0, i);
+        o1 = lccrt_oper_new_bitcast( f, lccrt_oper_get_res( o1), tpv, 0, i);
+        o2 = lccrt_oper_new_bitcast( f, lccrt_oper_get_res( o2), tpv, 0, i);
+        pa = lccrt_oper_get_res( o1);
+        pr = lccrt_oper_get_res( o2);
+        ne = le.makeVarConstHex( tu64, TV->getNumElements());
+        be = le.makeVarConstHex( tu64, elem_bitsize);
+        makeLibCallFast( opname, {pr, pa, ne, be}, 0, i);
+    }
 
     return;
 } /* LccrtFunctionEmitter::makeVecbitRepack */
@@ -6668,6 +7196,7 @@ LccrtFunctionEmitter::makeBitcast( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr
 void
 LccrtFunctionEmitter::makeCast( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
 {
+    char sf[256];
     CastInst &CI = cast<CastInst>(O);
     Value *V1 = O.getOperand( 0);
     Type *TR = CI.getType();
@@ -6676,6 +7205,7 @@ LccrtFunctionEmitter::makeCast( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
     std::string func_name = "";
     int is_unsig = 0;
     unsigned opcode = CI.getOpcode();
+    const char *hs = "__lccrt_builtin";
 
     switch ( CI.getOpcode() )
     {
@@ -6703,7 +7233,6 @@ LccrtFunctionEmitter::makeCast( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
     } else if ( isa<FixedVectorType>( T1)
                 && (CI.getOpcode() != Instruction::BitCast) )
     {
-        char sf[256];
         FixedVectorType *TVR = static_cast<FixedVectorType *>( TR);
         FixedVectorType *TV1 = static_cast<FixedVectorType *>( T1);
         Type *TVER = TVR->getElementType();
@@ -6722,96 +7251,138 @@ LccrtFunctionEmitter::makeCast( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
           default: break;
         }
 
-        if ( (((opcode == Instruction::SExt)
-               && (elem_sizer >= 2))
+        if ( ((opcode == Instruction::SExt)
               || (opcode == Instruction::ZExt)
               || (opcode == Instruction::Trunc))
              && (elem_sizer <= 8)
              && (elem_size1 <= 8)
-             && ((elem_bitsizer == 8*elem_sizer)
-                 || (elem_bitsizer == 1))
-             && ((elem_bitsize1 == 8*elem_size1)
-                 || (elem_bitsize1 == 1))
-             && (num_elems * elem_sizer <= 64)
-             && (num_elems * elem_size1 <= 64)
+             && (num_elems * elem_sizer >= 1)
+             && (num_elems * elem_size1 >= 1)
+             && (num_elems * elem_sizer <= 128)
+             && (num_elems * elem_size1 <= 128)
              && isFastLibCall( &O, __FILE__, __LINE__) )
         {
-            snprintf( sf, 256, "__lccrt_builtin_%s_v%di%di%d",
-                      func_name.c_str(), num_elems, elem_bitsize1, elem_bitsizer);
-            makeLibCallFast( sf, O, res, i);
+            auto lv0 = lvcmps.find( V1);
+            lccrt_type_ptr rty = lccrt_var_get_type( res);
 
-        } else if ( (opcode == Instruction::FPToSI)
-                    && (elem_bitsizer == elem_bitsize1)
-                    && (elem_bitsize1 == 32)
+            if ( (opcode == Instruction::SExt)
+                 && (lv0 != lvcmps.end())
+                 && (rty == lccrt_var_get_type( lv0->second)) )
+            {
+                lccrt_oper_new_move( f, lv0->second, res, i);
+            } else {
+                snprintf( sf, 256, "__lccrt_builtin_%s_v%di%di%d",
+                          func_name.c_str(), num_elems, elem_bitsize1, elem_bitsizer);
+                makeLibCallFast( sf, O, res, i);
+            }
+        } else if ( ((opcode == Instruction::FPToSI)
+                     || (opcode == Instruction::FPToUI))
+                    && ((elem_bitsize1 == 32)
+                        || (elem_bitsize1 == 64))
+                    && ((elem_bitsizer == 8)
+                        || (elem_bitsizer == 16)
+                        || (elem_bitsizer == 32)
+                        || (elem_bitsizer == 64))
                     && ((size1 == 8)
-                        || (size1 == 16))
+                        || (size1 == 16)
+                        || (size1 == 32)
+                        || (size1 == 64)
+                        || (size1 == 128))
                     && isFastLibCall( &O, __FILE__, __LINE__) )
         {
             snprintf( sf, 256, "__lccrt_builtin_%s_v%df%di%d",
                       func_name.c_str(), num_elems, elem_bitsize1, elem_bitsizer);
             makeLibCallFast( sf, O, res, i);
 
-        } else if ( ((opcode == Instruction::UIToFP)
-                     || (opcode == Instruction::SIToFP))
-                    && ((elem_bitsize1 < elem_bitsizer)
-                        || ((opcode == Instruction::SIToFP)
-                            && (elem_bitsize1 == elem_bitsizer)))
-                    && ((elem_bitsize1 == 8)
-                        || (elem_bitsize1 == 16)
-                        || (elem_bitsize1 == 32)
+        } else if ( ((opcode == Instruction::FPExt)
+                     || (opcode == Instruction::FPTrunc))
+                    && ((elem_bitsize1 == 32)
                         || (elem_bitsize1 == 64))
                     && ((elem_bitsizer == 32)
                         || (elem_bitsizer == 64))
-                    && ((num_elems == 2)
-                        || (num_elems == 4)
-                        || (num_elems == 8)
-                        || (num_elems == 16))
-                    && (num_elems * elem_size1 <= 64)
-                    && (num_elems * elem_sizer <= 64)
+                    && (num_elems >= 1)
+                    && (num_elems * elem_size1 <= 128)
+                    && (num_elems * elem_sizer <= 128)
+                    && isFastLibCall( &O, __FILE__, __LINE__) )
+        {
+            snprintf( sf, 256, "__lccrt_builtin_%s_v%df%df%d",
+                      func_name.c_str(), num_elems, elem_bitsize1, elem_bitsizer);
+            makeLibCallFast( sf, O, res, i);
+
+        } else if ( ((opcode == Instruction::UIToFP)
+                     || (opcode == Instruction::SIToFP))
+                    && ((elem_bitsize1 >= 1)
+                        && (elem_bitsize1 <= 64))
+                    && ((elem_bitsizer == 32)
+                        || (elem_bitsizer == 64))
+                    && (num_elems >= 1)
+                    && (num_elems * elem_size1 <= 128)
+                    && (num_elems * elem_sizer <= 128)
                     && isFastLibCall( &O, __FILE__, __LINE__) )
         {
             assert( (opcode == Instruction::UIToFP) || (opcode == Instruction::SIToFP));
-            if ( (elem_bitsize1 < 32) )
-            {
-                Value *V1 = O.getOperand( 0);
-                lccrt_var_ptr a1 = makeValue( V1, i);
-                const char *name0 = (opcode == Instruction::UIToFP) ? "zext" : "sext";
-                lccrt_type_ptr ti = lccrt_type_make_int( m, elem_bitsizer/8, 0);
-                lccrt_type_ptr t1 = lccrt_type_make_array( ti, num_elems);
-                lccrt_var_ptr v0 = lccrt_var_new_local( f, t1, 0);
+            snprintf( sf, 256, "__lccrt_builtin_%s_v%di%df%d",
+                      func_name.c_str(), num_elems, elem_bitsize1, elem_bitsizer);
+            makeLibCallFast( sf, O, res, i);
 
-                snprintf( sf, 256, "__lccrt_builtin_%s_v%di%di%d",
-                          name0, num_elems, elem_bitsize1, 32);
-                makeLibCallFast( sf, a1, 0, 0, v0, i);
-
-                snprintf( sf, 256, "__lccrt_builtin_%s_v%di%df%d",
-                          "sitofp", num_elems, 32, elem_bitsizer);
-                makeLibCallFast( sf, v0, 0, 0, res, i);
-            } else
-            {
-                snprintf( sf, 256, "__lccrt_builtin_%s_v%di%df%d",
-                          func_name.c_str(), num_elems, elem_bitsize1, elem_bitsizer);
-                makeLibCallFast( sf, O, res, i);
-            }
-        } else
+        } else if ( (opcode == Instruction::IntToPtr)
+                    && (elem_bitsize1 <= 64)
+                    && (num_elems * elem_sizer <= 128)
+                    && isFastLibCall( &O, __FILE__, __LINE__) )
         {
+            lccrt_var_ptr a1 = makeValue( O.getOperand( 0), i);
+            lccrt_type_ptr ti = lccrt_type_make_int( m, 8, 0);
+            lccrt_type_ptr t1 = lccrt_type_make_array( ti, num_elems);
+            lccrt_var_ptr v0 = lccrt_var_new_local( f, t1, 0);
+
+            if ( elem_bitsize1 < 64 ) {
+                makeLibVecCall( "zext", num_elems, elem_bitsize1, 64, a1, v0, i);
+            } else if ( elem_bitsize1 > 64 ) {
+                makeLibVecCall( "trunc", num_elems, elem_bitsize1, 64, a1, v0, i);
+            } else {
+                v0 = a1;
+            }
+
+            lccrt_oper_new_bitcast( f, v0, lccrt_var_get_type( res), res, i);
+
+        } else if ( (opcode == Instruction::PtrToInt)
+                    && (elem_bitsize1 <= 64)
+                    && (num_elems * elem_sizer <= 128)
+                    && isFastLibCall( &O, __FILE__, __LINE__) )
+        {
+            lccrt_var_ptr a1 = makeValue( O.getOperand( 0), i);
+            lccrt_type_ptr ti = lccrt_type_make_int( m, 8, 0);
+            lccrt_type_ptr t1 = lccrt_type_make_array( ti, num_elems);
+            lccrt_var_ptr v0 = lccrt_var_new_local( f, t1, 0);
+
+            v0 = (elem_bitsizer == 64) ? res : v0;
+            lccrt_oper_new_bitcast( f, a1, t1, v0, i);
+
+            if ( elem_bitsizer < 64 ) {
+                makeLibVecCall( "trunc", num_elems, 64, elem_bitsizer, v0, res, i);
+            } else if ( elem_bitsizer > 64 ) {
+                makeLibVecCall( "zext", num_elems, 64, elem_bitsizer, v0, res, i);
+            }
+        } else {
+            //dbgs() << O << "\n";
             func_name = "__lccrt_" + func_name + "_v";
             makeLibCall( func_name.c_str(), true, O, res, false, i);
         }
     } else if ( !le.isIntBitWidthNormalOrBool( TR)
                 || !le.isIntBitWidthNormalOrBool( T1) )
     {
+        int bitsize1 = le.DL.getTypeSizeInBits( T1);
+        int bitsizer = le.DL.getTypeSizeInBits( TR);
+
         if ( isa<IntegerType>( T1)
              && isa<IntegerType>( TR)
-             && (le.DL.getTypeAllocSize( T1) <= 8)
-             && (le.DL.getTypeAllocSize( TR) <= 8)
-             && (is_unsig) )
+             && (bitsize1 <= 64)
+             && (bitsizer <= 64)
+             && is_unsig )
         {
             uint64_t mask = 0;
             lccrt_var_ptr a2 = 0;
             lccrt_var_ptr a1 = makeValue( V1, i);
-            uint64_t bitsize1 = le.DL.getTypeSizeInBits( T1);
-            uint64_t bitsizer = le.DL.getTypeSizeInBits( TR);
             lccrt_type_ptr tu32 = lccrt_type_make_u32( m);
             lccrt_type_ptr tu64 = lccrt_type_make_u64( m);
             lccrt_type_ptr tur = (bitsizer <= 32) ? tu32 : tu64;
@@ -6851,8 +7422,37 @@ LccrtFunctionEmitter::makeCast( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
             a1 = lccrt_oper_get_res( lccrt_oper_new_and( f, a1, a2, 0, i));
 
             makeBitcastIntToNInt( bitsizer, a1, res, i);
-        } else
+
+        } else if ( (opcode == Instruction::Trunc)
+                    && (bitsize1 <= 128) )
         {
+            snprintf( sf, 256, "%s_trunc_i%di%d", hs, bitsize1, bitsizer);
+            makeLibCallFast( sf, makeValue( V1, i), 0, 0, res, i);
+
+        } else if ( (opcode == Instruction::SExt)
+                    && (bitsizer <= 128) )
+        {
+            snprintf( sf, 256, "%s_sext_i%di%d", hs, bitsize1, bitsizer);
+            makeLibCallFast( sf, makeValue( V1, i), 0, 0, res, i);
+
+        } else if ( (opcode == Instruction::ZExt)
+                    && (bitsizer <= 128) )
+        {
+            snprintf( sf, 256, "%s_zext_i%di%d", hs, bitsize1, bitsizer);
+            makeLibCallFast( sf, makeValue( V1, i), 0, 0, res, i);
+
+        } else if ( (opcode == Instruction::UIToFP)
+                    && (bitsize1 <= 64) && ((bitsizer == 32) || (bitsizer == 64)) )
+        {
+            snprintf( sf, 256, "%s_uitofp_i%df%d", hs, bitsize1, bitsizer);
+            makeLibCallFast( sf, makeValue( V1, i), 0, 0, res, i);
+
+        } else if ( (opcode == Instruction::SIToFP)
+                    && (bitsize1 <= 64) && ((bitsizer == 32) || (bitsizer == 64)) )
+        {
+            snprintf( sf, 256, "%s_sitofp_i%df%d", hs, bitsize1, bitsizer);
+            makeLibCallFast( sf, makeValue( V1, i), 0, 0, res, i);
+        } else {
             func_name = "__lccrt_" + func_name + "_n";
             makeLibCall( func_name.c_str(), false, CI, res, false, i);
         }
@@ -6952,18 +7552,74 @@ LccrtFunctionEmitter::makeInsertvalue( const Instruction &O, lccrt_v_ptr res, lc
 } /* LccrtFunctionEmitter::makeInsertvalue */
 
 /**
+ * Проверка на связанную цепочку insertvalue-операций.
+ */
+bool
+LccrtFunctionEmitter::isInsertvalueChain( BasicBlock::iterator &J)
+{
+    Instruction &O = *J;
+    bool r = false;
+
+    if ( isa<InsertValueInst>( O) ) {
+        Value *V0 = O.getOperand( 0);
+
+        if ( isa<InsertValueInst>( V0) ) {
+            InsertValueInst &P = cast<InsertValueInst>( *V0);
+
+            if ( P.hasOneUse() ) {
+                r = true;
+            }
+        }
+    }
+
+    return (r);
+} /* LccrtFunctionEmitter::isInsertvalueChain */
+
+/**
+ * Проверка на связанную цепочку insertelement-операций.
+ */
+bool
+LccrtFunctionEmitter::isInsertelementChain( BasicBlock::iterator &J)
+{
+    Instruction &O = *J;
+    bool r = false;
+
+    if ( isa<InsertElementInst>( O) ) {
+        Value *V0 = O.getOperand( 0);
+
+        if ( isa<InsertElementInst>( V0) ) {
+            InsertElementInst &P = cast<InsertElementInst>( *V0);
+
+            if ( P.hasOneUse() ) {
+                r = true;
+            }
+        }
+    }
+
+    return (r);
+} /* LccrtFunctionEmitter::isInsertelementChain */
+
+/**
  * Создание операции.
  */
 void
 LccrtFunctionEmitter::makeExtractelement( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
 {
-    ExtractElementInst &EE = cast<ExtractElementInst>(O);
     lccrt_var_ptr args[2] = {0};
+    ExtractElementInst &EE = cast<ExtractElementInst>(O);
+    Type *ETy = EE.getVectorOperandType()->getElementType();
 
     args[0] = makeValue( EE.getVectorOperand(), i);
     args[1] = makeValue( EE.getIndexOperand(), i);
 
-    lccrt_oper_new_elemread( f, 2, args, res, i);
+    if ( ETy->isPointerTy() ) {
+        lccrt_var_ptr b0;
+
+        b0 = lccrt_oper_get_res( lccrt_oper_new_elemread( f, 2, args, 0, i));
+        lccrt_oper_new_bitcast( f, b0, lccrt_var_get_type( res), res, i);
+    } else {
+        lccrt_oper_new_elemread( f, 2, args, res, i);
+    }
 
     return;
 } /* LccrtFunctionEmitter::makeExtractelement */
@@ -6975,6 +7631,8 @@ void
 LccrtFunctionEmitter::makeInsertelement( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i)
 {
     const InsertElementInst &IE = cast<InsertElementInst>(O);
+    lccrt_type_ptr t0 = 0;
+    lccrt_var_ptr a0 = 0;
     lccrt_var_ptr args[3] = {0};
     lccrt_type_ptr te = 0;
     Type *T0 = IE.getOperand( 0)->getType();
@@ -6985,7 +7643,13 @@ LccrtFunctionEmitter::makeInsertelement( const Instruction &O, lccrt_v_ptr res, 
         errorDump( &O);
     }
 
-    lccrt_oper_new_move( f, makeValue( IE.getOperand( 0), i), res, i);
+    a0 = makeValue( IE.getOperand( 0), i);
+    t0 = lccrt_var_get_type( a0);
+    if ( lccrt_type_is_pointer( te) && (te != lccrt_type_get_parent( t0)) ) {
+        lccrt_oper_new_bitcast( f, a0, lccrt_var_get_type( res), res, i);
+    } else {
+        lccrt_oper_new_move( f, a0, res, i);
+    }
 
     args[0] = lccrt_oper_get_res( lccrt_oper_iterator_get_prev( i));
     args[1] = makeValuePtrcast( IE.getOperand( 1), te, i);
@@ -7045,6 +7709,9 @@ LccrtFunctionEmitter::makeShufflevector( const Instruction &O, lccrt_v_ptr res, 
     int va_bytes = (lccrt_var_get_bytesize( va) + 7) / 8;
     int vb_bytes = (lccrt_var_get_bytesize( vb) + 7) / 8;
     lccrt_type_ptr ta = lccrt_var_get_type( va);
+    lccrt_type_ptr tb = lccrt_var_get_type( vb);
+    lccrt_type_ptr tae = lccrt_type_get_parent( ta);
+    lccrt_type_ptr tbe = lccrt_type_get_parent( tb);
     int ta_len = lccrt_type_get_num_args( ta);
     lccrt_type_ptr tr = lccrt_var_get_type( res);
     Type *T0 = SV.getOperand( 0)->getType();
@@ -7057,11 +7724,37 @@ LccrtFunctionEmitter::makeShufflevector( const Instruction &O, lccrt_v_ptr res, 
     SV.getShuffleMask( mask);
     mask_len = mask.size();
     vi_args = new lccrt_varinit_ptr[mask_len];
-   
-    memset( vi_args, 0, mask_len*sizeof( vi_args[0]));
 
-    assert( lccrt_type_is_array( ta) && (ta == lccrt_var_get_type( vb)));
-    if ( !is_opt
+    memset( vi_args, 0, mask_len*sizeof( vi_args[0]));
+    if ( lccrt_type_is_pointer( tae) ) {
+        tsym = 'p';
+    }
+
+    if ( !(lccrt_type_is_array( ta)
+           && lccrt_type_is_array( tb)
+           && (lccrt_type_get_num_args( ta) == lccrt_type_get_num_args( tb))
+           && ((ta == tb)
+               || (lccrt_type_is_pointer( tae)
+                   && lccrt_type_is_pointer( tbe)))) )
+    {
+        errorDump( &O);
+    } else {
+        if ( lccrt_type_is_pointer( tae) ) {
+            int64_t num_aelems = lccrt_type_get_num_args( ta);
+            lccrt_type_ptr tve = lccrt_type_make_pvoid( m);
+            lccrt_type_ptr tv = lccrt_type_make_array( tve, num_aelems);
+
+            if ( tve != tae ) {
+                va = lccrt_oper_get_res( lccrt_oper_new_bitcast( f, va, tv, 0, i));
+            }
+
+            if ( tve != tbe ) {
+                vb = lccrt_oper_get_res( lccrt_oper_new_bitcast( f, vb, tv, 0, i));
+            }
+        }
+    }
+
+    if ( 0 && !is_opt
          && (mask_len == ta_len)
          && (mask_len == (int)get_floor2( mask_len)) )
     {
@@ -7082,31 +7775,8 @@ LccrtFunctionEmitter::makeShufflevector( const Instruction &O, lccrt_v_ptr res, 
 
     if ( is_opt || !isFastLibCall( &O, __FILE__, __LINE__) ) {
         ;
-    } else if ( (va_bytes <= 16) && (vb_bytes <= 16) && (mask_len <= 8) )
-    {
-        char sf[256];
-        uint64_t w = 0;
-
-        is_opt = true;
-        for ( int j = mask_len - 1; j >= 0; --j ) {
-            w = (w << 8) | (uint8_t)SV.getMaskValue( j);
-        }
-
-        if ( (mask_len == 4)
-             && (num_elems == 3)
-             && (w == 0xff020100) )
-        {
-            snprintf( sf, 256, "__lccrt_builtin_veczxt_v%dv%d%c%d",
-                      mask_len, num_elems, tsym, 8*elem_size);
-            makeLibCallFast( sf, va, vb, 0, res, i);
-        } else {
-            snprintf( sf, 256, "__lccrt_builtin_shuffle_v%dv%d%c%d",
-                      mask_len, num_elems, tsym, 8*elem_size);
-            makeLibCallFast( sf, va, vb, le.makeVarConstHex( tu64, w), res, i);
-        }
-    } else if ( (va_bytes + vb_bytes <= 2*64)
-                && (mask_len*elem_size <= 2*64)
-                && (mask_len % 4 == 0)
+    } else if ( (va_bytes + vb_bytes <= 8*32)
+                && (mask_len*elem_size <= 8*32)
                 && (2*ta_len < 255) )
     {
         char sf[256];
@@ -7142,6 +7812,28 @@ LccrtFunctionEmitter::makeShufflevector( const Instruction &O, lccrt_v_ptr res, 
         }
 
         makeLibCallFast( sf, vargs, res, i);
+    } else if ( (va_bytes <= 16) && (vb_bytes <= 16) && (mask_len <= 8) )
+    {
+        char sf[256];
+        uint64_t w = 0;
+
+        is_opt = true;
+        for ( int j = mask_len - 1; j >= 0; --j ) {
+            w = (w << 8) | (uint8_t)SV.getMaskValue( j);
+        }
+
+        if ( (mask_len == 4)
+             && (num_elems == 3)
+             && (w == 0xff020100) )
+        {
+            snprintf( sf, 256, "__lccrt_builtin_veczxt_v%dv%d%c%d",
+                      mask_len, num_elems, tsym, 8*elem_size);
+            makeLibCallFast( sf, va, vb, 0, res, i);
+        } else {
+            snprintf( sf, 256, "__lccrt_builtin_shuffle_v%dv%d%c%d",
+                      mask_len, num_elems, tsym, 8*elem_size);
+            makeLibCallFast( sf, va, vb, le.makeVarConstHex( tu64, w), res, i);
+        }
     }
 
     if ( !is_opt
@@ -7340,34 +8032,83 @@ LccrtFunctionEmitter::makeSelect( const Instruction &O, lccrt_v_ptr res, lccrt_o
         Type *TVE1 = TV1->getElementType();
         int num_elems = TV1->getNumElements();
         int elem_size = le.DL.getTypeAllocSize( TVE1);
+        int elem_bitsize = le.DL.getTypeSizeInBits( TVE1);
 
-        if ( ((TVE1->isFloatingPointTy()
-               && ((elem_size == 4)
-                   || (elem_size == 8))
-               && ((num_elems * elem_size == 8)
-                   || (num_elems * elem_size == 16)))
-              || (TVE1->isIntegerTy()
-                  && le.isIntBitWidthNormal( TVE1)
-                  && (elem_size <= 8)
-                  && ((num_elems * elem_size == 8)
-                      || (num_elems * elem_size == 16)
-                      || (num_elems * elem_size == 32))))
-             && (elem_size >= 2)
+        if ( (TVE1->isFloatingPointTy()
+              || TVE1->isIntegerTy()
+              || TVE1->isPointerTy())
+             && (elem_size <= 8)
+             && (num_elems * elem_size <= 128)
+             && (num_elems >= 1)
              && isFastLibCall( &O, __FILE__, __LINE__) )
         {
             lccrt_type_ptr tye = lccrt_type_make_int( m, elem_size, 0);
             lccrt_type_ptr tyve = lccrt_type_make_array( tye, num_elems);
-            lccrt_var_ptr v0 = lccrt_var_new_local( f, tyve, 0);
+            lccrt_var_ptr v0 = 0;
+            Value *V0 = S.getOperand( 0);
+            lccrt_var_ptr b = makeValue( S.getOperand( 1), i);
+            lccrt_var_ptr c = makeValue( S.getOperand( 2), i);
+            auto lv0 = lvcmps.find( V0);
+            char ctype = 'X';
+
+            if ( TVE1->isFloatingPointTy() ) ctype = 'f';
+            else if ( TVE1->isIntegerTy() ) ctype = 'i';
+            else if ( TVE1->isPointerTy() ) ctype = 'p';
+
+            if ( lv0 != lvcmps.end() ) {
+                lccrt_type_ptr t0 = lccrt_var_get_type( lv0->second);
+                lccrt_type_ptr te0 = lccrt_type_get_parent( t0);
+                int ebysize0 = te0 ? lccrt_type_get_bytesize( te0) : 0;
+
+                if ( !lccrt_type_is_array( t0)
+                     || ((int)lccrt_type_get_num_args( t0) != num_elems)
+                     || !lccrt_type_is_int( te0))
+                {
+                    errorDump( &O);
+                } else if ( te0 == tye ) {
+                    v0 = lv0->second;
+                } else if ( elem_size > ebysize0 ) {
+                    snprintf( sf, 256, "__lccrt_builtin_sext_v%di%di%d",
+                              num_elems, 8*ebysize0, 8*elem_size);
+                    v0 = lccrt_var_new_local( f, tyve, 0);
+                    makeLibCallFast( sf, lv0->second, 0, 0, v0, i);
+                } else if ( elem_size < ebysize0 ) {
+                    snprintf( sf, 256, "__lccrt_builtin_trunc_v%di%di%d",
+                              num_elems, 8*ebysize0, 8*elem_size);
+                    v0 = lccrt_var_new_local( f, tyve, 0);
+                    makeLibCallFast( sf, lv0->second, 0, 0, v0, i);
+                }
+            }
+
+            if ( !v0 ) {
+                snprintf( sf, 256, "__lccrt_builtin_sext_v%di1i%d",
+                          num_elems, 8*elem_size);
+                v0 = lccrt_var_new_local( f, tyve, 0);
+                makeLibCallFast( sf, makeValue( V0, i), 0, 0, v0, i);
+            }
+
+            snprintf( sf, 256, "__lccrt_builtin_select_v%d%c%d",
+                      num_elems, ctype, elem_bitsize);
+            makeLibCallFast( sf, v0, b, c, res, i);
+
+        } else if ( TVE1->isIntegerTy()
+                    && le.isIntBitWidthNormalOrBool( TVE1)
+                    && (elem_size == 1)
+                    && (num_elems * elem_size >= 1)
+                    && (num_elems * elem_size <= 128)
+                    && isFastLibCall( &O, __FILE__, __LINE__) )
+        {
+            lccrt_type_ptr tu8 = lccrt_type_make_int( m, 1, 0);
+            lccrt_type_ptr tau8 = lccrt_type_make_array( tu8, num_elems);
+            lccrt_var_ptr v0 = lccrt_var_new_local( f, tau8, 0);
             lccrt_var_ptr a = makeValue( S.getOperand( 0), i);
             lccrt_var_ptr b = makeValue( S.getOperand( 1), i);
             lccrt_var_ptr c = makeValue( S.getOperand( 2), i);
 
-            snprintf( sf, 256, "__lccrt_builtin_sext_v%di1i%d",
-                      num_elems, 8*elem_size);
+            snprintf( sf, 256, "__lccrt_builtin_sext_v%di1i8", num_elems);
             makeLibCallFast( sf, a, 0, 0, v0, i);
 
-            snprintf( sf, 256, "__lccrt_builtin_select_v%d%c%d",
-                      num_elems, TVE1->isIntegerTy() ? 'i' : 'f', 8*elem_size);
+            snprintf( sf, 256, "__lccrt_builtin_select_v%di8", num_elems);
             makeLibCallFast( sf, v0, b, c, res, i);
         } else {
             makeLibCall( "__lccrt_select_v", true, S, res, false, i);
@@ -7543,6 +8284,7 @@ LccrtFunctionEmitter::makeAtomicrmw( const Instruction &O, lccrt_v_ptr res, lccr
     const char *op = 0;
     Type *T = RMW.getType();
     lccrt_type_ptr tr = le.makeType( T);
+    bool isfloat = false;
 
     if ( isa<PointerType>( T) ) {
         bw = 64 / 8;
@@ -7574,8 +8316,8 @@ LccrtFunctionEmitter::makeAtomicrmw( const Instruction &O, lccrt_v_ptr res, lccr
       case AtomicRMWInst::Or:   op = "fetch_or";   break;
       case AtomicRMWInst::Xor:  op = "fetch_xor";  break;
       case AtomicRMWInst::Nand: op = "fetch_nand"; break;
-      case AtomicRMWInst::FAdd: op = "fetch_fadd"; break;
-      case AtomicRMWInst::FSub: op = "fetch_fsub"; break;
+      case AtomicRMWInst::FAdd: op = "fetch_fadd"; isfloat = true; break;
+      case AtomicRMWInst::FSub: op = "fetch_fsub"; isfloat = true; break;
       case AtomicRMWInst::Max:  op = "fetch_max";  break;
       case AtomicRMWInst::Min:  op = "fetch_min";  break;
       case AtomicRMWInst::UMax: op = "fetch_umax"; break;
@@ -7589,8 +8331,10 @@ LccrtFunctionEmitter::makeAtomicrmw( const Instruction &O, lccrt_v_ptr res, lccr
     snprintf( name, 256, "%s%s_%d", "__atomic_", op, bw);
 
     args[0] = makeCallBuiltinAddr( 0, t, name);
-    oper2 = lccrt_oper_new_bitcast( f, args[2], tu, 0, i);
-    args[2] = lccrt_oper_get_res( oper2);
+    if ( !isfloat ) {
+        oper2 = lccrt_oper_new_bitcast( f, args[2], tu, 0, i);
+        args[2] = lccrt_oper_get_res( oper2);
+    }
     args[3] = le.makeVarConst( te[2], lccrt_varinit_new_scalar( te[2], 0));
     oper1 = lccrt_oper_new_call( f, t, 4, args, 0, 0, res, i);
     oper1 = lccrt_oper_new_bitcast( f, lccrt_oper_get_res( oper1), tr, 0, i);

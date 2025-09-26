@@ -2240,6 +2240,93 @@ RValue CodeGenFunction::EmitLoadOfBitfieldLValue(LValue LV,
   llvm::Type *ResLTy = ConvertType(LV.getType());
 
   Address Ptr = LV.getBitFieldAddress();
+
+#ifdef LLVM_WITH_LCCRT
+  if ( Info.StorageSize > 64 ) {
+      Address Ptr = LV.getBitFieldAddress();
+      CharUnits Align = Ptr.getAlignment();
+      llvm::Value *PtrBase = Ptr.getPointer();
+      llvm::Type *TyI64 = llvm::Type::getIntNTy( getLLVMContext(), 64);
+      uint64_t A0 = Info.Offset / 64;
+      uint64_t A1 = (Info.Offset + Info.Size - 1) / 64;
+      uint64_t Off0 = Info.Offset - 64*A0;
+      uint64_t TLen0 = Info.StorageSize - 64*A1;
+      uint64_t TLen1 = (TLen0 < 64) ? ((TLen0 + 7) & ~0x7ULL) : 64;
+      llvm::Type *TyITL = llvm::Type::getIntNTy( getLLVMContext(), TLen1);
+      llvm::Value *VA0 = llvm::ConstantInt::get( TyI64, A0);
+      llvm::Value *VA1 = llvm::ConstantInt::get( TyI64, A1);
+      llvm::Value *VX = 0;
+      llvm::Value *VY = 0;
+
+      if ( LV.isVolatileQualified() ) {
+          llvm::dbgs() << "TODO: " << __FILE__ << ":" << __LINE__ << ":";
+          llvm::dbgs() << " bitfield with volatile\n";
+          abort();
+      }
+
+      if ( (Info.Size > 64) || (Info.Size <= 0) ) {
+          llvm::dbgs() << "TODO: " << __FILE__ << ":" << __LINE__ << ":";
+          llvm::dbgs() << " bitsize " << Info.Size;
+          llvm::dbgs() << " of bitfield.insert doesn't fit into uint64_t\n";
+          abort();
+      }
+
+      if ( A0 == A1 ) {
+          uint64_t HLen = 64 - (Off0 + Info.Size);
+          uint64_t LLen = 64 - Info.Size;
+          llvm::Value *PA0 = Builder.CreateGEP( TyI64, PtrBase, {VA0}, "bf.gep0");
+
+          VX = Builder.CreateAlignedLoad( TyITL, PA0, Align, "bf.load");
+          if ( TyITL != TyI64 ) {
+              VX = Builder.CreateIntCast( VX, TyI64, false, "bf.cast");
+          }
+
+          if ( HLen > 0 ) {
+              VX = Builder.CreateShl( VX, llvm::ConstantInt::get( TyI64, HLen), "bf.shl");
+          }
+
+          if ( LLen > 0 ) {
+              if ( Info.IsSigned ) {
+                  VX = Builder.CreateAShr( VX, llvm::ConstantInt::get( TyI64, LLen), "bf.sar");
+              } else {
+                  VX = Builder.CreateLShr( VX, llvm::ConstantInt::get( TyI64, LLen), "bf.shr");
+              }
+          }
+      } else {
+          uint64_t LXLen = Off0;
+          uint64_t XLen = 64 - LXLen;
+          uint64_t YLen = Info.Size - XLen;
+          uint64_t HYLen = 64 - YLen;
+          uint64_t LLen = 64 - Info.Size;
+          llvm::Value *PA0 = Builder.CreateGEP( TyI64, PtrBase, {VA0}, "bf.gep0");
+          llvm::Value *PA1 = Builder.CreateGEP( TyI64, PtrBase, {VA1}, "bf.gep1");
+
+          VX = Builder.CreateAlignedLoad( TyI64, PA0, Align, "bf.load");
+          VY = Builder.CreateAlignedLoad( TyITL, PA1, Align, "bf.load");
+          if ( TyITL != TyI64 ) {
+              VY = Builder.CreateIntCast( VY, TyI64, false, "bf.cast");
+          }
+
+          VY = Builder.CreateShl( VY, llvm::ConstantInt::get( TyI64, HYLen), "bf.shl");
+          VX = Builder.CreateLShr( VX, llvm::ConstantInt::get( TyI64, YLen), "bf.shr");
+          VX = Builder.CreateOr( VY, VX, "bf.or");
+          if ( Info.IsSigned ) {
+              VX = Builder.CreateAShr( VX, llvm::ConstantInt::get( TyI64, LLen), "bf.sar");
+          } else {
+              VX = Builder.CreateLShr( VX, llvm::ConstantInt::get( TyI64, LLen), "bf.shr");
+          }
+      }
+
+      if ( ResLTy != TyI64 ) {
+          VX = Builder.CreateIntCast( VX, ResLTy, Info.IsSigned, "bf.cast");
+      }
+
+      EmitScalarRangeCheck( VX, LV.getType(), Loc);
+
+      return RValue::get( VX);
+  }
+#endif /* LLVM_WITH_LCCRT */
+
   llvm::Value *Val =
       Builder.CreateLoad(Ptr, LV.isVolatileQualified(), "bf.load");
 
@@ -2473,15 +2560,143 @@ void CodeGenFunction::EmitStoreThroughLValue(RValue Src, LValue Dst,
 void CodeGenFunction::EmitStoreThroughBitfieldLValue(RValue Src, LValue Dst,
                                                      llvm::Value **Result) {
   const CGBitFieldInfo &Info = Dst.getBitFieldInfo();
-  llvm::Type *ResLTy = ConvertTypeForMem(Dst.getType());
   Address Ptr = Dst.getBitFieldAddress();
+  llvm::Type *ResLTy = ConvertTypeForMem(Dst.getType());
+  llvm::Type *ElemTy = Ptr.getElementType();
 
   // Get the source value, truncated to the width of the bit-field.
   llvm::Value *SrcVal = Src.getScalarVal();
 
+#ifdef LLVM_WITH_LCCRT
+  if ( Info.StorageSize > 64 ) {
+      Address Ptr = Dst.getBitFieldAddress();
+      CharUnits Align = Ptr.getAlignment();
+      llvm::Value *PtrBase = Ptr.getPointer();
+      llvm::Type *TyI64 = llvm::Type::getIntNTy( getLLVMContext(), 64);
+      uint64_t A0 = Info.Offset / 64;
+      uint64_t A1 = (Info.Offset + Info.Size - 1) / 64;
+      uint64_t Off0 = Info.Offset - 64*A0;
+      uint64_t TLen0 = Info.StorageSize - 64*A1;
+      uint64_t TLen1 = (TLen0 < 64) ? ((TLen0 + 7) & ~0x7ULL) : 64;
+      llvm::Type *TyITL = llvm::Type::getIntNTy( getLLVMContext(), TLen1);
+      llvm::Value *VA0 = llvm::ConstantInt::get( TyI64, A0);
+      llvm::Value *VA1 = llvm::ConstantInt::get( TyI64, A1);
+      llvm::Value *VX = 0;
+      llvm::Value *VY = 0;
+      llvm::Value *VZ = SrcVal;
+      llvm::Value *VW = 0;
+
+      if ( Dst.isVolatileQualified() ) {
+          llvm::dbgs() << "TODO: " << __FILE__ << ":" << __LINE__ << ":";
+          llvm::dbgs() << " bitfield with volatile\n";
+          abort();
+      }
+
+      if ( (Info.Size > 64) || (Info.Size <= 0) ) {
+          llvm::dbgs() << "TODO: " << __FILE__ << ":" << __LINE__ << ":";
+          llvm::dbgs() << " bitsize " << Info.Size;
+          llvm::dbgs() << " of bitfield.insert doesn't fit into uint64_t\n";
+          abort();
+      }
+
+      if ( VZ->getType() != TyI64 ) {
+          VZ = Builder.CreateIntCast( VZ, TyI64, false, "bf.cast");
+      }
+
+      VW = VZ;
+      if ( A0 == A1 ) {
+          uint64_t HLen = 64 - (Off0 + Info.Size);
+          uint64_t LLen = Off0;
+          uint64_t ZAnd = (~0ULL << (64 - Info.Size)) >> HLen;
+          llvm::Value *PA0 = Builder.CreateGEP( TyI64, PtrBase, {VA0}, "bf.gep0");
+
+          VX = Builder.CreateAlignedLoad( TyITL, PA0, Align, "bf.load");
+          if ( TyITL != TyI64 ) {
+              VX = Builder.CreateIntCast( VX, TyI64, false, "bf.cast");
+          }
+
+          if ( Off0 > 0 ) {
+              VZ = Builder.CreateShl( VZ, llvm::ConstantInt::get( TyI64, LLen), "bf.shl");
+          }
+
+          if ( HLen > 0 ) {
+              VZ = Builder.CreateAnd( VZ, llvm::ConstantInt::get( TyI64, ZAnd), "bf.and");
+          }
+
+          VX = Builder.CreateAnd( VX, llvm::ConstantInt::get( TyI64, ~ZAnd), "bf.and");
+          VZ = Builder.CreateOr( VX, VZ, "bf.ior");
+          if ( TyITL != TyI64 ) {
+              VZ = Builder.CreateIntCast( VZ, TyITL, false, "bf.cast");
+          }
+
+          Builder.CreateAlignedStore( VZ, PA0, Align, false);
+      } else {
+          uint64_t LXLen = Off0;
+          uint64_t XLen = 64 - LXLen;
+          uint64_t YLen = Info.Size - XLen;
+          uint64_t HLen = 64 - Info.Size;
+          llvm::Value *PA0 = Builder.CreateGEP( TyI64, PtrBase, {VA0}, "bf.gep0");
+          llvm::Value *PA1 = Builder.CreateGEP( TyI64, PtrBase, {VA1}, "bf.gep1");
+          llvm::Value *CXAnd = llvm::ConstantInt::get( TyI64, ~0ULL >> XLen);
+          llvm::Value *CXShl = llvm::ConstantInt::get( TyI64, LXLen);
+          llvm::Value *CYAnd = llvm::ConstantInt::get( TyI64, ~0ULL << YLen);
+          llvm::Value *CYShl = llvm::ConstantInt::get( TyI64, HLen);
+          llvm::Value *CYShr = llvm::ConstantInt::get( TyI64, HLen + XLen);
+
+          VX = Builder.CreateAlignedLoad( TyI64, PA0, Align, "bf.load");
+          VY = Builder.CreateAlignedLoad( TyITL, PA1, Align, "bf.load");
+          if ( TyITL != TyI64 ) {
+              VY = Builder.CreateIntCast( VY, TyI64, false, "bf.cast");
+          }
+
+          VX = Builder.CreateAnd( VX, CXAnd, "bf.and");
+          VZ = Builder.CreateShl( VW, CXShl, "bf.shl");
+          VX = Builder.CreateOr( VX, VZ, "bf.ior");
+
+          VY = Builder.CreateAnd( VY, CYAnd, "bf.and");
+          VZ = Builder.CreateShl( VW, CYShl, "bf.shl");
+          VZ = Builder.CreateLShr( VZ, CYShr, "bf.shr");
+          VY = Builder.CreateOr( VY, VZ, "bf.ior");
+
+          if ( TyITL != TyI64 ) {
+              VY = Builder.CreateIntCast( VY, TyITL, false, "bf.cast");
+          }
+
+          Builder.CreateAlignedStore( VX, PA0, Align, false);
+          Builder.CreateAlignedStore( VY, PA1, Align, false);
+      }
+
+      if ( Result ) {
+          llvm::IntegerType *ResLTyI = dyn_cast<llvm::IntegerType>( ResLTy);
+
+          if ( Info.Size < ResLTyI->getBitWidth() ) {
+              llvm::Value *CWShl = llvm::ConstantInt::get( TyI64, 64 - Info.Size);
+
+              VW = Builder.CreateShl( VW, CWShl, "bf.shl");
+              if ( Info.IsSigned ) {
+                  VW = Builder.CreateAShr( VW, CWShl, "bf.sar");
+              } else {
+                  VW = Builder.CreateLShr( VW, CWShl, "bf.shr");
+              }
+          }
+
+          if ( ResLTy != TyI64 ) {
+              VW = Builder.CreateIntCast( VW, ResLTy, false, "bf.cast");
+          }
+
+          Result[0] = VW;
+          if ( hasBooleanRepresentation( Dst.getType()) || Dst.getType()->isExtVectorBoolType() ) {
+              llvm::dbgs() << "TODO: " << __FILE__ << ":" << __LINE__ << ":\n";
+              abort();
+          }
+      }
+
+      return;
+  }
+#endif /* LLVM_WITH_LCCRT */
+
   // Cast the source to the storage type and shift it into place.
-  SrcVal = Builder.CreateIntCast(SrcVal, Ptr.getElementType(),
-                                 /*isSigned=*/false);
+  SrcVal = Builder.CreateIntCast(SrcVal, ElemTy, /*isSigned=*/false);
   llvm::Value *MaskedVal = SrcVal;
 
   const bool UseVolatile =

@@ -821,7 +821,7 @@ void Sema::ActOnPragmaMSAllocText(
 }
 
 void Sema::ActOnPragmaAsmInline(const Token &IdTok, SourceLocation PragmaLoc) {
-
+#if 0
   Scope *curScope = 0;
   IdentifierInfo *Name = IdTok.getIdentifierInfo();
   LookupResult Lookup(*this, Name, IdTok.getLocation(), LookupOrdinaryName);
@@ -846,6 +846,7 @@ void Sema::ActOnPragmaAsmInline(const Token &IdTok, SourceLocation PragmaLoc) {
 
   VD->addAttr(UnusedAttr::CreateImplicit(Context, IdTok.getLocation(),
                                          UnusedAttr::GNU_unused));
+#endif
 }
 
 void Sema::ActOnPragmaUnused(const Token &IdTok, Scope *curScope,
