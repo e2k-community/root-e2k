@@ -48,10 +48,12 @@ private:
   bool IsAlignStack;
   AsmDialect Dialect;
   bool CanThrow;
+  bool IsAsmInline;
 
   InlineAsm(FunctionType *Ty, const std::string &AsmString,
             const std::string &Constraints, bool hasSideEffects,
-            bool isAlignStack, AsmDialect asmDialect, bool canThrow);
+            bool isAlignStack, AsmDialect asmDialect, bool canThrow,
+            bool isAsmInline);
 
   /// When the ConstantUniqueMap merges two types and makes two InlineAsms
   /// identical, it destroys one of them with this method.
@@ -66,12 +68,14 @@ public:
   static InlineAsm *get(FunctionType *Ty, StringRef AsmString,
                         StringRef Constraints, bool hasSideEffects,
                         bool isAlignStack = false,
-                        AsmDialect asmDialect = AD_ATT, bool canThrow = false);
+                        AsmDialect asmDialect = AD_ATT, bool canThrow = false,
+                        bool isAsmInline = false);
 
   bool hasSideEffects() const { return HasSideEffects; }
   bool isAlignStack() const { return IsAlignStack; }
   AsmDialect getDialect() const { return Dialect; }
   bool canThrow() const { return CanThrow; }
+  bool isAsmInline() const { return IsAsmInline; }
 
   /// getType - InlineAsm's are always pointers.
   ///
@@ -217,6 +221,7 @@ public:
     Extra_MayLoad = 8,
     Extra_MayStore = 16,
     Extra_IsConvergent = 32,
+    Extra_IsAsmInline = 64,
   };
 
   // Inline asm operands map to multiple SDNode / MachineInstr operands.
@@ -452,6 +457,8 @@ public:
       Result.push_back("isconvergent");
     if (ExtraInfo & InlineAsm::Extra_IsAlignStack)
       Result.push_back("alignstack");
+    if (ExtraInfo & InlineAsm::Extra_IsAsmInline)
+      Result.push_back("asminline");
 
     AsmDialect Dialect =
         InlineAsm::AsmDialect((ExtraInfo & InlineAsm::Extra_AsmDialect));

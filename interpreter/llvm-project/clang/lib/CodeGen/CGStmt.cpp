@@ -2866,7 +2866,8 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
 
   llvm::InlineAsm *IA = llvm::InlineAsm::get(
       FTy, AsmString, Constraints, HasSideEffect,
-      /* IsAlignStack */ false, AsmDialect, HasUnwindClobber);
+      /* IsAlignStack */ false, AsmDialect, HasUnwindClobber,
+      S.isAsmInline());
   std::vector<llvm::Value*> RegResults;
   llvm::CallBrInst *CBR;
   llvm::DenseMap<llvm::BasicBlock *, SmallVector<llvm::Value *, 4>>

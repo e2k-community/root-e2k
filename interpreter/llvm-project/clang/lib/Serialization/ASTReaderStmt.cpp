@@ -373,6 +373,7 @@ void ASTStmtReader::VisitAsmStmt(AsmStmt *S) {
   S->NumClobbers = Record.readInt();
   S->setAsmLoc(readSourceLocation());
   S->setVolatile(Record.readInt());
+  S->setAsmInline(Record.readInt());
   S->setSimple(Record.readInt());
 }
 

@@ -3741,19 +3741,21 @@ bool LLParser::parseValID(ValID &ID, PerFunctionState *PFS, Type *ExpectedTy) {
   case lltok::kw_asm: {
     // ValID ::= 'asm' SideEffect? AlignStack? IntelDialect? STRINGCONSTANT ','
     //             STRINGCONSTANT
-    bool HasSideEffect, AlignStack, AsmDialect, CanThrow;
+    bool HasSideEffect, AlignStack, AsmDialect, CanThrow, AsmInline;
     Lex.Lex();
     if (parseOptionalToken(lltok::kw_sideeffect, HasSideEffect) ||
         parseOptionalToken(lltok::kw_alignstack, AlignStack) ||
         parseOptionalToken(lltok::kw_inteldialect, AsmDialect) ||
         parseOptionalToken(lltok::kw_unwind, CanThrow) ||
+        parseOptionalToken(lltok::kw_asminline, AsmInline) ||
         parseStringConstant(ID.StrVal) ||
         parseToken(lltok::comma, "expected comma in inline asm expression") ||
         parseToken(lltok::StringConstant, "expected constraint string"))
       return true;
     ID.StrVal2 = Lex.getStrVal();
     ID.UIntVal = unsigned(HasSideEffect) | (unsigned(AlignStack) << 1) |
-                 (unsigned(AsmDialect) << 2) | (unsigned(CanThrow) << 3);
+                 (unsigned(AsmDialect) << 2) | (unsigned(CanThrow) << 3) |
+                 (unsigned(AsmInline) << 7);
     ID.Kind = ValID::t_InlineAsm;
     return false;
   }
@@ -5824,7 +5826,8 @@ bool LLParser::convertValIDToValue(Type *Ty, ValID &ID, Value *&V,
       return error(ID.Loc, toString(std::move(Err)));
     V = InlineAsm::get(
         ID.FTy, ID.StrVal, ID.StrVal2, ID.UIntVal & 1, (ID.UIntVal >> 1) & 1,
-        InlineAsm::AsmDialect((ID.UIntVal >> 2) & 1), (ID.UIntVal >> 3) & 1);
+        InlineAsm::AsmDialect((ID.UIntVal >> 2) & 1), (ID.UIntVal >> 3) & 1,
+                              (ID.UIntVal >> 7) & 1);
     return false;
   }
   case ValID::t_GlobalName:

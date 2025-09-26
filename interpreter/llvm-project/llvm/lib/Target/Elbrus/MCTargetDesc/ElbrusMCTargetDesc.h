@@ -29,7 +29,9 @@ namespace llvm
         public:
             ElbrusMCInstPrinter( const MCAsmInfo &mai, const MCInstrInfo &mii, const MCRegisterInfo &mri)
                 : MCInstPrinter(mai, mii, mri) {}
-            std::pair<const char *, uint64_t> getMnemonic( const MCInst *MI) override {}
+            std::pair<const char *, uint64_t> getMnemonic( const MCInst *MI) override {
+                return std::pair<const char *, uint64_t>( 0, 0);
+            }
             void printInst( const MCInst *MI, uint64_t Address, StringRef Annot,
                             const MCSubtargetInfo &STI, raw_ostream &OS) override {}
     };

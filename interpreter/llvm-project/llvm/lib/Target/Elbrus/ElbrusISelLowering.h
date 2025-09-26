@@ -18,13 +18,17 @@
 
 namespace llvm
 {
-    class ElbrusSubtarget;
 
-    class ElbrusTargetLowering : public TargetLowering
-    {
-        public:
-            explicit ElbrusTargetLowering( const TargetMachine &TM, const ElbrusSubtarget &STI);
-    };
+class ElbrusSubtarget;
+
+class ElbrusTargetLowering : public TargetLowering
+{
+public:
+    explicit ElbrusTargetLowering( const TargetMachine &TM, const ElbrusSubtarget &STI);
+
+    /// Customize the preferred legalization strategy for certain types.
+    LegalizeTypeAction getPreferredVectorAction(MVT VT) const override;
+};
 
 } // end namespace llvm
 

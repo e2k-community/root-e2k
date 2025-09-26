@@ -123,6 +123,7 @@ enum Kind {
   kw_asm,
   kw_sideeffect,
   kw_inteldialect,
+  kw_asminline,
   kw_gc,
   kw_prefix,
   kw_prologue,

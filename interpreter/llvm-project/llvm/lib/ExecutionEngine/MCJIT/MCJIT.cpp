@@ -148,6 +148,22 @@ void MCJIT::setObjectCache(ObjectCache* NewCache) {
 std::unique_ptr<MemoryBuffer> MCJIT::emitObject(Module *M) {
   assert(M && "Can not emit a null module");
 
+    if ( 0 )
+    {
+        std::error_code ec;
+        char name[1024] = {};
+        raw_fd_ostream *fs = 0;
+
+        snprintf( name, 1024, "./llvm0.dump.XXXXXX.ll");
+
+        mkstemps( name, 3);
+        fs = new raw_fd_ostream( name, ec, sys::fs::OpenFlags::OF_None);
+        M->print( *fs, 0);
+        delete fs;
+        fprintf( stderr, "SAVE IR-MODULE TO FILE: %s\n", name);
+        fflush( stderr);
+    }
+
   std::lock_guard<sys::Mutex> locked(lock);
 
   // Materialize all globals in the module if they have not been

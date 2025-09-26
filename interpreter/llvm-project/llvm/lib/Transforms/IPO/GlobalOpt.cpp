@@ -1506,7 +1506,7 @@ processInternalGlobal(GlobalVariable *GV, const GlobalStatus &GS,
     // Don't actually mark a global constant if it's atomic because atomic loads
     // are implemented by a trivial cmpxchg in some edge-cases and that usually
     // requires write access to the variable even if it's not actually changed.
-    if (GS.Ordering == AtomicOrdering::NotAtomic) {
+    if (GS.Ordering == AtomicOrdering::NotAtomic && !GV->hasSection()) {
       assert(!GV->isConstant() && "Expected a non-constant global");
       GV->setConstant(true);
       Changed = true;

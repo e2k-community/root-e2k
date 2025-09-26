@@ -466,7 +466,8 @@ LLVMValueRef LLVMGetInlineAsm(LLVMTypeRef Ty, const char *AsmString,
                               size_t AsmStringSize, const char *Constraints,
                               size_t ConstraintsSize, LLVMBool HasSideEffects,
                               LLVMBool IsAlignStack,
-                              LLVMInlineAsmDialect Dialect, LLVMBool CanThrow) {
+                              LLVMInlineAsmDialect Dialect, LLVMBool CanThrow/*,
+                              LLVMBool IsAsmInline*/) {
   InlineAsm::AsmDialect AD;
   switch (Dialect) {
   case LLVMInlineAsmDialectATT:
@@ -479,7 +480,8 @@ LLVMValueRef LLVMGetInlineAsm(LLVMTypeRef Ty, const char *AsmString,
   return wrap(InlineAsm::get(unwrap<FunctionType>(Ty),
                              StringRef(AsmString, AsmStringSize),
                              StringRef(Constraints, ConstraintsSize),
-                             HasSideEffects, IsAlignStack, AD, CanThrow));
+                             HasSideEffects, IsAlignStack, AD, CanThrow,
+                             /*IsAsmInline*/false));
 }
 
 const char *LLVMGetInlineAsmAsmString(LLVMValueRef InlineAsmVal, size_t *Len) {
@@ -1796,9 +1798,11 @@ LLVMValueRef LLVMConstShuffleVector(LLVMValueRef VectorAConstant,
 LLVMValueRef LLVMConstInlineAsm(LLVMTypeRef Ty, const char *AsmString,
                                 const char *Constraints,
                                 LLVMBool HasSideEffects,
-                                LLVMBool IsAlignStack) {
+                                LLVMBool IsAlignStack/*,
+                                LLVMBool IsAsmInline*/) {
   return wrap(InlineAsm::get(dyn_cast<FunctionType>(unwrap(Ty)), AsmString,
-                             Constraints, HasSideEffects, IsAlignStack));
+                             Constraints, HasSideEffects, IsAlignStack/*, 0, false,
+                             IsAsmInline*/));
 }
 
 LLVMValueRef LLVMBlockAddress(LLVMValueRef F, LLVMBasicBlockRef BB) {

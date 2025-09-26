@@ -1458,6 +1458,10 @@ bool IndVarSimplify::canonicalizeExitCondition(Loop *L) {
     FullCR = FullCR.zeroExtend(OuterBitWidth);
     auto RHSCR = SE->getUnsignedRange(SE->applyLoopGuards(SE->getSCEV(RHS), L));
     if (FullCR.contains(RHSCR)) {
+// TUNE for E2K_BACKEND.
+#if 1
+      continue;
+#endif
       // We have now matched icmp signed-cond zext(X), zext(Y'), and can thus
       // replace the signed condition with the unsigned version.
       ICmp->setPredicate(ICmp->getUnsignedPredicate());
@@ -1999,6 +2003,11 @@ bool IndVarSimplify::run(Loop *L) {
 
       if (!Rewriter.isSafeToExpand(ExitCount))
         continue;
+
+// TUNE for E2K_BACKEND.      
+#if 1
+      continue;
+#endif
 
       Changed |= linearFunctionTestReplace(L, ExitingBB,
                                            ExitCount, IndVar,

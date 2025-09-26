@@ -3500,6 +3500,7 @@ Error BitcodeReader::parseConstants() {
       bool IsAlignStack = (Record[OpNum] >> 1) & 1;
       unsigned AsmDialect = (Record[OpNum] >> 2) & 1;
       bool CanThrow = (Record[OpNum] >> 3) & 1;
+      bool IsAsmInline = (Record[OpNum] >> 7) & 1;
       ++OpNum;
       unsigned AsmStrSize = Record[OpNum];
       ++OpNum;
@@ -3516,7 +3517,8 @@ Error BitcodeReader::parseConstants() {
         ConstrStr += (char)Record[OpNum + AsmStrSize + i];
       UpgradeInlineAsmString(&AsmStr);
       V = InlineAsm::get(FnTy, AsmStr, ConstrStr, HasSideEffects, IsAlignStack,
-                         InlineAsm::AsmDialect(AsmDialect), CanThrow);
+                         InlineAsm::AsmDialect(AsmDialect), CanThrow,
+                         IsAsmInline);
       break;
     }
     case bitc::CST_CODE_BLOCKADDRESS:{

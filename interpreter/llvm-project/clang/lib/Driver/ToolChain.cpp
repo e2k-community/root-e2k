@@ -9,6 +9,7 @@
 #include "clang/Driver/ToolChain.h"
 #include "ToolChains/Arch/AArch64.h"
 #include "ToolChains/Arch/ARM.h"
+#include "ToolChains/Arch/Elbrus.h"
 #include "ToolChains/Clang.h"
 #include "ToolChains/CommonArgs.h"
 #include "ToolChains/Flang.h"
@@ -974,6 +975,11 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
   default:
     return getTripleString();
 
+  case llvm::Triple::e2k64: {
+    llvm::Triple Triple = getTriple();
+    tools::elbrus::setArchNameInTriple(Args, Triple);
+    return Triple.getTriple();
+  }
   case llvm::Triple::x86_64: {
     llvm::Triple Triple = getTriple();
     if (!Triple.isOSBinFormatMachO())

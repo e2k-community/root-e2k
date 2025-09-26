@@ -792,7 +792,7 @@ void tools::gnutools::Assembler::ConstructJob(Compilation &C,
   case llvm::Triple::e2k128:
 	{
         const char *ptrarg = 0;
-        std::string CPUName = elbrus::getElbrusTargetCPU(Args);
+        std::string CPUName = elbrus::getElbrusTargetCPU(Args, triple);
 		CmdArgs.push_back( Args.MakeArgString("-mcpu=" + CPUName));
         if (arch == llvm::Triple::e2k32)  ptrarg = "-mptr32";
         if (arch == llvm::Triple::e2k64)  ptrarg = "-mptr64";

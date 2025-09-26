@@ -353,6 +353,7 @@ void ASTStmtWriter::VisitAsmStmt(AsmStmt *S) {
   Record.push_back(S->getNumClobbers());
   Record.AddSourceLocation(S->getAsmLoc());
   Record.push_back(S->isVolatile());
+  Record.push_back(S->isAsmInline());
   Record.push_back(S->isSimple());
 }
 

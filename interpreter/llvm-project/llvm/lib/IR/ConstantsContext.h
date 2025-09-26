@@ -353,25 +353,27 @@ struct InlineAsmKeyType {
   bool IsAlignStack;
   InlineAsm::AsmDialect AsmDialect;
   bool CanThrow;
+  bool IsAsmInline;
 
   InlineAsmKeyType(StringRef AsmString, StringRef Constraints,
                    FunctionType *FTy, bool HasSideEffects, bool IsAlignStack,
-                   InlineAsm::AsmDialect AsmDialect, bool canThrow)
+                   InlineAsm::AsmDialect AsmDialect, bool canThrow, bool isAsmInline)
       : AsmString(AsmString), Constraints(Constraints), FTy(FTy),
         HasSideEffects(HasSideEffects), IsAlignStack(IsAlignStack),
-        AsmDialect(AsmDialect), CanThrow(canThrow) {}
+        AsmDialect(AsmDialect), CanThrow(canThrow), IsAsmInline(isAsmInline) {}
 
   InlineAsmKeyType(const InlineAsm *Asm, SmallVectorImpl<Constant *> &)
       : AsmString(Asm->getAsmString()), Constraints(Asm->getConstraintString()),
         FTy(Asm->getFunctionType()), HasSideEffects(Asm->hasSideEffects()),
         IsAlignStack(Asm->isAlignStack()), AsmDialect(Asm->getDialect()),
-        CanThrow(Asm->canThrow()) {}
+        CanThrow(Asm->canThrow()),IsAsmInline(Asm->isAsmInline()) {}
 
   bool operator==(const InlineAsmKeyType &X) const {
     return HasSideEffects == X.HasSideEffects &&
            IsAlignStack == X.IsAlignStack && AsmDialect == X.AsmDialect &&
            AsmString == X.AsmString && Constraints == X.Constraints &&
-           FTy == X.FTy && CanThrow == X.CanThrow;
+           FTy == X.FTy && CanThrow == X.CanThrow &&
+           IsAsmInline == X.IsAsmInline;
   }
 
   bool operator==(const InlineAsm *Asm) const {
@@ -380,12 +382,14 @@ struct InlineAsmKeyType {
            AsmDialect == Asm->getDialect() &&
            AsmString == Asm->getAsmString() &&
            Constraints == Asm->getConstraintString() &&
-           FTy == Asm->getFunctionType() && CanThrow == Asm->canThrow();
+           FTy == Asm->getFunctionType() && CanThrow == Asm->canThrow() &&
+           IsAsmInline == Asm->isAsmInline();
   }
 
   unsigned getHash() const {
     return hash_combine(AsmString, Constraints, HasSideEffects, IsAlignStack,
-                        AsmDialect, FTy, CanThrow);
+                        AsmDialect, FTy, CanThrow,
+                        IsAsmInline);
   }
 
   using TypeClass = ConstantInfo<InlineAsm>::TypeClass;
@@ -393,7 +397,8 @@ struct InlineAsmKeyType {
   InlineAsm *create(TypeClass *Ty) const {
     assert(PointerType::getUnqual(FTy) == Ty);
     return new InlineAsm(FTy, std::string(AsmString), std::string(Constraints),
-                         HasSideEffects, IsAlignStack, AsmDialect, CanThrow);
+                         HasSideEffects, IsAlignStack, AsmDialect, CanThrow,
+                         IsAsmInline);
   }
 };
 

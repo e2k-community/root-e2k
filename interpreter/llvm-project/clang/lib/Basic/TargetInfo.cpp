@@ -618,8 +618,14 @@ static StringRef removeGCCRegisterPrefix(StringRef Name) {
 /// a valid clobber in an inline asm statement. This is used by
 /// Sema.
 bool TargetInfo::isValidClobber(StringRef Name) const {
+  if (Name.empty())
+    return false;
+
+  // Get rid of any register prefix.
+  Name = removeGCCRegisterPrefix(Name);
+
   return (isValidGCCRegisterName(Name) || Name == "memory" || Name == "cc" ||
-          Name == "unwind");
+          Name == "unwind" || Name == "call");
 }
 
 /// isValidGCCRegisterName - Returns whether the passed in string

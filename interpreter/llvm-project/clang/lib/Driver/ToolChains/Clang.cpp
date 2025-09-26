@@ -3564,6 +3564,34 @@ static void RenderTrivialAutoVarInitOptions(const Driver &D,
   }
 }
 
+static void RenderLccrtBackendOptions(const ArgList &Args, ArgStringList &CmdArgs) {
+  std::string str;
+
+  for (Arg *A : Args.filtered(options::OPT_flccrt_backend_options,
+                              options::OPT_flb_options,
+                              options::OPT_flb_option))
+  {
+    A->claim();
+    switch (A->getOption().getID()) {
+      case options::OPT_flccrt_backend_options:
+      case options::OPT_flb_options:
+        str = A->getValue();
+        break;
+      case options::OPT_flb_option:
+        if ( !str.empty() ) str += " ";
+        str = str + A->getValue();
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (!str.empty()) {
+    str = "-lccrt-backend-options=" + str;
+    CmdArgs.push_back(Args.MakeArgString(str));
+  }
+}
+
 static void RenderOpenCLOptions(const ArgList &Args, ArgStringList &CmdArgs,
                                 types::ID InputType) {
   // cl-denorms-are-zero is not forwarded. It is translated into a generic flag
@@ -7198,13 +7226,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-lccrt-ipa");
   if (Args.hasFlag(options::OPT_flccrt_backend_debug, options::OPT_fno_lccrt_backend_debug, 0))
     CmdArgs.push_back("-lccrt-backend-debug");
-  if (Arg *A = Args.getLastArg(options::OPT_flccrt_backend_options)) {
-    //std::string str = "-lccrt-backend-options=\"";
-    std::string str = "-lccrt-backend-options=";
-    str += A->getValue();
-    //str += "\"";
-    CmdArgs.push_back(Args.MakeArgString(str));
-  }
+  RenderLccrtBackendOptions(Args, CmdArgs);
 
   if (Args.hasFlag(options::OPT_faligned, options::OPT_fno_aligned, 0))
     CmdArgs.push_back("-faligned");

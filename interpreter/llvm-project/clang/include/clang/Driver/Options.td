@@ -3787,6 +3787,8 @@ def flccrt_backend_debug : Flag<["-"], "flccrt-backend-debug">, Group<f_Group>,
   HelpText<"Use lccrt-backend debug version">;
 def fno_lccrt_backend_debug : Flag<["-"], "fno-lccrt-backend-debug">, Group<f_Group>;
 def flccrt_backend_options : Joined<["-"], "flccrt-backend-options=">, Group<f_Group>, Flags<[NoXarchOption]>;
+def flb_options : Joined<["-"], "flb-options=">, Group<f_Group>, Flags<[NoXarchOption]>;
+def flb_option : Joined<["-"], "flb-option=">, Group<f_Group>, Flags<[NoXarchOption]>;
 
 defm aligned : BoolFOption<"aligned",
   LangOpts<"Aligned">, DefaultFalse,

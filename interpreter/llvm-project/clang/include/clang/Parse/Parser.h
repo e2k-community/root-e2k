@@ -814,7 +814,7 @@ private:
 
   /// Handle the annotation token produced for
   /// #pragma asm_inline...
-  StmtResult HandlePragmaAsmInline();
+  StmtResult HandlePragmaAsmInline( bool &msAsm);
 
   /// Handle the annotation token produced for
   /// #pragma STDC FP_CONTRACT...

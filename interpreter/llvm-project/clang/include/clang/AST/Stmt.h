@@ -3109,6 +3109,8 @@ protected:
   /// This assembly statement should not be optimized, deleted or moved.
   bool IsVolatile;
 
+  bool IsAsmInline;
+
   unsigned NumOutputs;
   unsigned NumInputs;
   unsigned NumClobbers;
@@ -3118,6 +3120,7 @@ protected:
   AsmStmt(StmtClass SC, SourceLocation asmloc, bool issimple, bool isvolatile,
           unsigned numoutputs, unsigned numinputs, unsigned numclobbers)
       : Stmt (SC), AsmLoc(asmloc), IsSimple(issimple), IsVolatile(isvolatile),
+        IsAsmInline(false),
         NumOutputs(numoutputs), NumInputs(numinputs),
         NumClobbers(numclobbers) {}
 
@@ -3133,6 +3136,9 @@ public:
 
   bool isVolatile() const { return IsVolatile; }
   void setVolatile(bool V) { IsVolatile = V; }
+
+  bool isAsmInline() const { return IsAsmInline; }
+  void setAsmInline(bool V) { IsAsmInline = V; }
 
   SourceLocation getBeginLoc() const LLVM_READONLY { return {}; }
   SourceLocation getEndLoc() const LLVM_READONLY { return {}; }

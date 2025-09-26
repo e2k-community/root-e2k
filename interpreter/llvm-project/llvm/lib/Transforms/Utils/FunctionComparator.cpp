@@ -822,6 +822,8 @@ int FunctionComparator::cmpInlineAsm(const InlineAsm *L,
     return Res;
   if (int Res = cmpNumbers(L->isAlignStack(), R->isAlignStack()))
     return Res;
+  if (int Res = cmpNumbers(L->isAsmInline(), R->isAsmInline()))
+    return Res;
   if (int Res = cmpNumbers(L->getDialect(), R->getDialect()))
     return Res;
   assert(L->getFunctionType() != R->getFunctionType());

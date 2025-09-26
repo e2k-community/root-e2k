@@ -382,6 +382,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("e2k32", e2k32)
     .Case("e2k64", e2k64)
     .Case("e2k128", e2k128)
+    .Case("e2k", e2k64)
     .Case("m68k", m68k)
     .Case("mips", mips)
     .Case("mipsel", mipsel)
@@ -532,11 +533,20 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("e2k128", Triple::e2k128)
     .Cases("e2k", "e2k64", Triple::e2k64)
     .Cases("e2kv2", "e2k64v2", Triple::e2k64)
+    .Case("e2k2c+", Triple::e2k64)
     .Cases("e2kv3", "e2k64v3", Triple::e2k64)
+    .Case("e2k4c", Triple::e2k64)
     .Cases("e2kv4", "e2k64v4", Triple::e2k64)
+    .Case("e2k8c", Triple::e2k64)
+    .Case("e2k1c+", Triple::e2k64)
     .Cases("e2kv5", "e2k64v5", Triple::e2k64)
     .Cases("e2kv6", "e2k64v6", Triple::e2k64)
+    .Case("e2k16c", Triple::e2k64)
+    .Case("e2k2c3", Triple::e2k64)
+    .Case("e2k12c", Triple::e2k64)
     .Cases("e2kv7", "e2k64v7", Triple::e2k64)
+    .Case("e2k48c", Triple::e2k64)
+    .Case("e2k8v7", Triple::e2k64)
     .Case("thumb", Triple::thumb)
     .Case("thumbeb", Triple::thumbeb)
     .Case("avr", Triple::avr)
@@ -735,18 +745,34 @@ static Triple::SubArchType parseSubArch(StringRef SubArchName) {
     return Triple::MipsSubArch_r6;
 
   if ( SubArchName.starts_with( "e2k") ) {
-      if ( SubArchName.ends_with( "v2") ) {
-          return Triple::E2KSubArch_v2;
-      } else if ( SubArchName.ends_with( "v3") ) {
+      if ( SubArchName.ends_with( "v3") ) {
           return Triple::E2KSubArch_v3;
+      } else if ( SubArchName.ends_with( "4c") ) {
+          return Triple::E2KSubArch_v3_4c;
       } else if ( SubArchName.ends_with( "v4") ) {
           return Triple::E2KSubArch_v4;
+      } else if ( SubArchName.ends_with( "8c") ) {
+          return Triple::E2KSubArch_v4_8c;
+      } else if ( SubArchName.ends_with( "1cp") ) {
+          return Triple::E2KSubArch_v4_1cp;
       } else if ( SubArchName.ends_with( "v5") ) {
           return Triple::E2KSubArch_v5;
+      } else if ( SubArchName.ends_with( "8c2") ) {
+          return Triple::E2KSubArch_v5_8c2;
       } else if ( SubArchName.ends_with( "v6") ) {
           return Triple::E2KSubArch_v6;
+      } else if ( SubArchName.ends_with( "16c") ) {
+          return Triple::E2KSubArch_v6_16c;
+      } else if ( SubArchName.ends_with( "2c3") ) {
+          return Triple::E2KSubArch_v6_2c3;
+      } else if ( SubArchName.ends_with( "12c") ) {
+          return Triple::E2KSubArch_v6_12c;
       } else if ( SubArchName.ends_with( "v7") ) {
           return Triple::E2KSubArch_v7;
+      } else if ( SubArchName.ends_with( "48c") ) {
+          return Triple::E2KSubArch_v7_48c;
+      } else if ( SubArchName.ends_with( "8v7") ) {
+          return Triple::E2KSubArch_v7_8v7;
       }
   }
 

@@ -273,11 +273,13 @@ class LLVM_LIBRARY_VISIBILITY LccrtEmitter {
     int getElementBitsize( Type *T);
     lccrt_type_ptr makeType( Type *T);
     lccrt_type_ptr makeType( Type *T, NamedTypes &ntypes);
+    lccrt_type_ptr makeTypeInt( llvm::IntegerType *T);
     lccrt_type_ptr makeTypeStruct( StructType *ST, NamedTypes &ntypes);
     lccrt_type_ptr makeTypeDenseVector( Type *T);
     lccrt_type_ptr makeValueType( Value *V);
     lccrt_type_ptr makeTypeIntNormal( int bitwidth);
-    Type *getValueElementType( Value *V);
+    Type *getValueElemType( Value *V);
+    lccrt_type_ptr makeElemPtrType( Type *ResTy, Type *ResElemTy);
     lccrt_function_ptr findLibCall( const std::string &S);
     void insertLibCall( const std::string &S, lccrt_function_ptr f);
     void numberLabels( const Function *F);
@@ -308,6 +310,7 @@ class LLVM_LIBRARY_VISIBILITY LccrtFunctionEmitter {
     lccrt_context_ptr c;
     Function *F;
     MapValueToVar lvals;
+    MapValueToVar lvcmps;
     MapBBToOper lbls;
     MapTypeVecVars locals_type_pool; /* пул временных переменных, разделенных по типам */
     int num_lvals; /* количество локальных переменных (без имени) */
@@ -350,7 +353,9 @@ class LLVM_LIBRARY_VISIBILITY LccrtFunctionEmitter {
     void makeFshl( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeFshr( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeFmuladd( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
-    void makeSqrt( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
+    void makeFnameCall( User &O, const char *iname, lccrt_v_ptr res, lccrt_oi_ptr i);
+    void makeOverflowCall( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
+    void makeSatCall( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeIntAbs( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeIntMinMax( std::string mname, User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeBitrev( User &O, lccrt_v_ptr res, lccrt_oi_ptr i);
@@ -363,6 +368,8 @@ class LLVM_LIBRARY_VISIBILITY LccrtFunctionEmitter {
                           lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeLibCallFast( const char *func_name, const std::vector<lccrt_var_ptr> &iargs,
                           lccrt_var_ptr res, lccrt_oi_ptr i);
+    void makeLibVecCall( const char *fname, int num_elems, int ebits1, int ebitsr,
+                         lccrt_v_ptr va, lccrt_v_ptr vr, lccrt_oi_ptr i);
     int makeBranch( Instruction &O, lccrt_oper_ptr &ct, lccrt_v_ptr res,
                     arg_ref_t *alts_to_opers, lccrt_oi_ptr i);
     int makeIndirectBranch( Instruction &O, lccrt_oper_ptr &ct, lccrt_v_ptr res,
@@ -372,10 +379,15 @@ class LLVM_LIBRARY_VISIBILITY LccrtFunctionEmitter {
                     arg_ref_t *alts_to_opers, lccrt_oi_ptr i);
     void makeLandingpad( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeResume( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);
-    std::string evalAsmConstraint( std::string ac);
-    std::string evalAsmConstraintVector( const InlineAsm::ConstraintCodeVector &Codes);
+    std::string evalAsmConstraint( std::string ac, std::string &asmreg);
+    std::string evalAsmConstraintVector( const InlineAsm::ConstraintCodeVector &Codes,
+                                         std::string &asmreg);
+    std::string preprocessAsmText( std::string asm_text);
+    std::string preprocessConstraint( const CallInst &O, InlineAsm::ConstraintInfo &j,
+                                      std::string &asmreg);
     bool parseInt( const char *p, int &len, int64_t &value);
     bool parseAsmInlineArg( const char *p, int &len, std::string &arg);
+    lccrt_var_ptr makeAsmInlineOperand( const CallInst &O, int karg, lccrt_oi_ptr i);
     void makeAsmInline( const CallInst &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeReadWriteRegister( const CallInst &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     lccrt_v_ptr makeCallBuiltinAddr( const Function *F, lccrt_type_ptr type, const char *name);
@@ -394,6 +406,8 @@ class LLVM_LIBRARY_VISIBILITY LccrtFunctionEmitter {
     void makeSelect( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeExtractvalue( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeInsertvalue( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);
+    bool isInsertvalueChain( BasicBlock::iterator &J);
+    bool isInsertelementChain( BasicBlock::iterator &J);
     void makeExtractelement( Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeInsertelement( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);
     void makeShufflevector( const Instruction &O, lccrt_v_ptr res, lccrt_oi_ptr i);

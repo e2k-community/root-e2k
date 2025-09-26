@@ -20,7 +20,9 @@ namespace driver {
 namespace tools {
 namespace elbrus {
 
-std::string getElbrusTargetCPU( const llvm::opt::ArgList &Args);
+void setArchNameInTriple( const llvm::opt::ArgList &Args, llvm::Triple &Triple);
+
+std::string getElbrusTargetCPU( const llvm::opt::ArgList &Args, const llvm::Triple &Triple);
 
 void getElbrusTargetFeatures( const Driver &D, const llvm::Triple &Triple,
                               const llvm::opt::ArgList &Args,

@@ -527,10 +527,7 @@ StringRef sys::detail::getHostCPUNameForElbrus(StringRef ProcCpuinfoContent) {
   }
 
   switch ( CPUId ) {
-    case 0x02: r = "elbrus-v2"; break;
     case 0x03: r = "elbrus-4c"; break;
-    case 0x04: r = "elbrus-2c+"; break;
-    case 0x06: r = "elbrus-v2"; break;
     case 0x07: r = "elbrus-8c"; break;
     case 0x08: r = "elbrus-1c+"; break;
     case 0x09: r = "elbrus-8c2"; break;
