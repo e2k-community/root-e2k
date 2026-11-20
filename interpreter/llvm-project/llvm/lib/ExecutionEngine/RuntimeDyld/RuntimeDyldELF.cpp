@@ -610,11 +610,15 @@ RuntimeDyldELF::resolveElbrusRelocation( const SectionEntry &Section,
         llvm_unreachable("Relocation type not implemented yet!");
         break;
       case ELF::R_E2K_32_ABS: s = "R_E2K_32_ABS"; break;
-      case ELF::R_E2K_32_PC:
-        a = Value + Addend;
-        TargetPtr[0] = a >> 32U;
-        TargetPtr[1] = a;
+      case ELF::R_E2K_32_PC: {
+        // 32-bit PC-relative data word (S + A - P), e.g. FDE pc_begin in
+        // .eh_frame. Must not touch the following word (FDE pc_range).
+        int64_t Rel = (int64_t)(Value + Addend) - (int64_t)FinalAddress;
+        if ( Rel < INT32_MIN || Rel > INT32_MAX )
+            s1 = "internal error: R_E2K_32_PC relocation overflow";
+        support::ulittle32_t::ref{TargetPtr} = (uint32_t)Rel;
         break;
+      }
       case ELF::R_E2K_AP_GOT: s = "R_E2K_AP_GOT"; break;
       case ELF::R_E2K_PL_GOT: s = "R_E2K_PL_GOT"; break;
       case ELF::R_E2K_32_JMP_SLOT: s = "R_E2K_32_JMP_SLOT"; break;
