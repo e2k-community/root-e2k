@@ -313,12 +313,12 @@ ROOT::Internal::RPageSource::EnsureClusterDetails(DescriptorId_t cgId, RAnyDescr
    if (exclGuard->GetClusterGroupDescriptor(cgId).HasClusterDetails()) {
       // unlikely, but between releasing the shared guard and acquiring the exclusive guard, the cluster details
       // may have appeared
-      return exclGuard;
+      return RAnyDescriptorGuard(std::move(exclGuard));
    }
 
    LoadPageList(cgId, exclGuard);
 
-   return exclGuard;
+   return RAnyDescriptorGuard(std::move(exclGuard));
 }
 
 ROOT::DescriptorId_t ROOT::Internal::RPageSource::FindClusterGroupId(DescriptorId_t clusterId) const
@@ -364,7 +364,7 @@ ROOT::Internal::RPageSource::FindNextClusterId(ROOT::DescriptorId_t clusterId, R
    nextId = clusterId + 1;
    if (nextId == sharedGuard->GetNClusters()) {
       nextId = kInvalidDescriptorId;
-      return sharedGuard;
+      return RAnyDescriptorGuard(std::move(sharedGuard));
    }
    return EnsureClusterDetails(FindClusterGroupId(nextId), std::move(sharedGuard));
 }
