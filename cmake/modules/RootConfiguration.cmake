@@ -558,6 +558,17 @@ else()
             OUTPUT_VARIABLE __cplusplus_PPout)
 endif()
 string(REGEX MATCH "__cplusplus[=| ]([0-9]+)" __cplusplus "${__cplusplus_PPout}")
+if(NOT CMAKE_MATCH_1)
+   # Some compilers (e.g. MCST lcc) do not print `#pragma message`; ask the
+   # preprocessor for its predefined macros instead.
+   separate_arguments(_cxx_std_flag UNIX_COMMAND "${CMAKE_CXX${CMAKE_CXX_STANDARD}_STANDARD_COMPILE_OPTION}")
+   execute_process(COMMAND ${CMAKE_CXX_COMPILER} ${_cxx_std_flag} -dM -E -x c++ /dev/null
+                   OUTPUT_VARIABLE __cplusplus_PPout ERROR_QUIET)
+   string(REGEX MATCH "#define __cplusplus ([0-9]+)" __cplusplus "${__cplusplus_PPout}")
+endif()
+if(NOT CMAKE_MATCH_1)
+   message(FATAL_ERROR "Could not determine the value of __cplusplus for ${CMAKE_CXX_COMPILER}")
+endif()
 set(__cplusplus ${CMAKE_MATCH_1}L)
 
 # To mark the build tree. Important for automatic resolution of relative paths,
