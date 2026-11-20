@@ -9,6 +9,19 @@ if(CMAKE_OSX_SYSROOT)
   set(_gsl_cppflags "-isysroot ${CMAKE_OSX_SYSROOT}")
   set(_gsl_ldflags  "-isysroot ${CMAKE_OSX_SYSROOT}")
 endif()
+# GSL ships config.guess/config.sub from 2013 which do not know newer
+# architectures (e.g. Elbrus e2k): replace them with the system copies.
+set(_gsl_patch_cmd "")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^e2k")
+  file(GLOB _gsl_cfg_guess /usr/share/automake*/config.guess /usr/lib/rpm/*/config.guess /usr/lib/rpm/config.guess /usr/share/misc/config.guess)
+  file(GLOB _gsl_cfg_sub /usr/share/automake*/config.sub /usr/lib/rpm/*/config.sub /usr/lib/rpm/config.sub /usr/share/misc/config.sub)
+  if(NOT _gsl_cfg_guess OR NOT _gsl_cfg_sub)
+    message(FATAL_ERROR "builtin_gsl on ${CMAKE_SYSTEM_PROCESSOR} needs an up-to-date config.guess/config.sub (install automake)")
+  endif()
+  list(GET _gsl_cfg_guess 0 _gsl_cfg_guess)
+  list(GET _gsl_cfg_sub 0 _gsl_cfg_sub)
+  set(_gsl_patch_cmd PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${_gsl_cfg_guess} ${_gsl_cfg_sub} <SOURCE_DIR>/)
+endif()
 ExternalProject_Add(
   BUILTIN_GSL
   PREFIX ${ROOT_GSL_PREFIX}
@@ -18,6 +31,7 @@ ExternalProject_Add(
   URL_HASH SHA256=${ROOT_GSL_HASH}
   SOURCE_DIR GSL-src # prevent "<gsl/...>" vs GSL/ macOS warning
   INSTALL_DIR ${ROOT_GSL_PREFIX}
+  ${_gsl_patch_cmd}
   CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR>
                     --libdir=<INSTALL_DIR>/lib
                     --enable-shared=no --with-pic
