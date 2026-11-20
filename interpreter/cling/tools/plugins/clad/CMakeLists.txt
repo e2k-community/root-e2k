@@ -118,7 +118,7 @@ endif()
 
 # list(APPEND _clad_patches_list "patch1.patch" "patch2.patch")
 #list(APPEND _clad_patches_list "nullptr_dereference_fix.patch" "windows_build_fix.patch")
-list(APPEND _clad_patches_list "lld_lookup_no_default_path.patch")
+list(APPEND _clad_patches_list "lld_lookup_no_default_path.patch" "lcc_local_class_ice.patch")
 # An external clad source directory is used as is: it is expected to be
 # already patched if necessary.
 if (_clad_patches_list AND NOT DEFINED CLAD_SOURCE_DIR)

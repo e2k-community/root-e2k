@@ -1,0 +1,35 @@
+Subject: [PATCH] Move InjectiveCheckerExpr out of isInjectiveE (lcc ICE)
+
+MCST lcc (EDG front end, e2k) aborts with "internal error #2656:
+assertion failed at lower_name.c in add_discriminator" on the local
+class InjectiveCheckerExpr with nested classes. Define it in an
+anonymous namespace instead; no functional change.
+---
+diff --git a/lib/Differentiator/CladUtils.cpp b/lib/Differentiator/CladUtils.cpp
+--- a/lib/Differentiator/CladUtils.cpp
++++ b/lib/Differentiator/CladUtils.cpp
+@@ -1698,7 +1698,10 @@
+       return T;
+     }
+ 
+-    static bool isInjectiveE(const clang::Expr* E) {
++    namespace {
++      // Defined at namespace scope instead of locally in isInjectiveE():
++      // MCST lcc (EDG) crashes with an internal error in add_discriminator on
++      // a local class with nested classes.
+       class InjectiveCheckerExpr
+           : public clang::RecursiveASTVisitor<InjectiveCheckerExpr> {
+         struct IdxNode {
+@@ -1828,7 +1831,11 @@
+           return true;
+         }
+ 
+-      } checker;
++      };
++    } // namespace
++
++    static bool isInjectiveE(const clang::Expr* E) {
++      InjectiveCheckerExpr checker;
+       return checker.isInjectiveIdx(E);
+     }
+     /// Checks if a variable is changed before a certain usage.
