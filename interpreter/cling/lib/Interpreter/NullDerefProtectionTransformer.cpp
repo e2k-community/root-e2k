@@ -12,6 +12,7 @@
 
 #include "cling/Interpreter/Interpreter.h"
 #include "cling/Utils/AST.h"
+#include "cling/Utils/Utils.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -23,6 +24,7 @@
 #include "clang/Sema/Lookup.h"
 
 #include <bitset>
+#include <cstdlib>
 
 using namespace clang;
 
@@ -210,17 +212,41 @@ class PointerCheckInjector : public RecursiveASTVisitor<PointerCheckInjector> {
       return false;
     }
 
+    /// Runtime function called before each dereference. On e2k an
+    /// out-of-line call per dereference (JIT code -> libCling ->
+    /// __tls_get_addr) breaks the VLIW scheduling of hot loops and made
+    /// macros 15-17x slower (plb2 sudoku 344 s vs 20 s). There the inline
+    /// null check from RuntimeUniverse.h is used: null dereferences still
+    /// throw, other invalid pointers raise SIGSEGV as in compiled code.
+    /// CLING_POINTER_CHECKS=1 restores the full check.
+    static const char* CheckFunctionName() {
+#if defined(__e2k__)
+      static const bool FullCheck =
+          utils::ConvertEnvValueToBool(std::getenv("CLING_POINTER_CHECKS"));
+      if (!FullCheck)
+        return "cling_runtime_internal_checkPointer";
+#endif
+      return "cling_runtime_internal_throwIfInvalidPointer";
+    }
+
     void FindAndCacheRuntimeLookupResult() {
       assert(!m_clingthrowIfInvalidPointerCache && "Called multiple times!?");
 
-      DeclarationName Name
-        = &m_Context.Idents.get("cling_runtime_internal_throwIfInvalidPointer");
-      SourceLocation noLoc;
-      m_clingthrowIfInvalidPointerCache = new LookupResult(m_Sema, Name, noLoc,
-                                        Sema::LookupOrdinaryName,
-                                        RedeclarationKind::ForVisibleRedeclaration);
-      m_Sema.LookupQualifiedName(*m_clingthrowIfInvalidPointerCache,
-                                 m_Context.getTranslationUnitDecl());
+      // Fall back to the full check if the inline one is not declared, e.g.
+      // with a Cling_Runtime module built from an older RuntimeUniverse.h.
+      for (const char* FName :
+           {CheckFunctionName(), "cling_runtime_internal_throwIfInvalidPointer"}) {
+        delete m_clingthrowIfInvalidPointerCache;
+        DeclarationName Name = &m_Context.Idents.get(FName);
+        SourceLocation noLoc;
+        m_clingthrowIfInvalidPointerCache = new LookupResult(m_Sema, Name, noLoc,
+                                          Sema::LookupOrdinaryName,
+                                          RedeclarationKind::ForVisibleRedeclaration);
+        m_Sema.LookupQualifiedName(*m_clingthrowIfInvalidPointerCache,
+                                   m_Context.getTranslationUnitDecl());
+        if (!m_clingthrowIfInvalidPointerCache->empty())
+          break;
+      }
       assert(!m_clingthrowIfInvalidPointerCache->empty() &&
               "Lookup of cling_runtime_internal_throwIfInvalidPointer failed!");
     }

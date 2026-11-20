@@ -192,6 +192,18 @@ extern "C" {
                                                     void* Expr,
                                                     const void* Arg);
 }
+
+#if defined(__e2k__)
+/// e2k: inline fast path of the pointer check that cling injects before
+/// dereferences (see NullDerefProtectionTransformer). Only a null pointer
+/// leaves the hot path and calls the full check, which throws.
+inline __attribute__((always_inline)) void*
+cling_runtime_internal_checkPointer(void* Sema, void* Expr, const void* Arg) {
+  if (__builtin_expect(Arg == nullptr, 0))
+    return cling_runtime_internal_throwIfInvalidPointer(Sema, Expr, Arg);
+  return const_cast<void*>(Arg);
+}
+#endif
 #endif // __cplusplus
 
 #endif // CLING_RUNTIME_UNIVERSE_H
