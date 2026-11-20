@@ -40,6 +40,16 @@ enum RuntimeDyldErrorCode {
   GenericRTDyldError = 1
 };
 
+// ELF STB_GNU_UNIQUE (emitted e.g. by gcc and by the e2k lccrt backend for
+// vtables, typeinfo and C++17 inline variables) has linkonce/weak semantics.
+// Treat it as weak, as ORC's ObjectFileInterface does; otherwise every JIT
+// module re-defines such symbols strongly and materialization fails.
+bool isELFGNUUniqueSymbol(const SymbolRef &Sym) {
+  if (!isa<ELFObjectFileBase>(Sym.getObject()))
+    return false;
+  return ELFSymbolRef(Sym).getBinding() == ELF::STB_GNU_UNIQUE;
+}
+
 #if defined( __e2k__) && defined( LLVM_WITH_LCCRT)
 class LccrtResolver
 {
@@ -273,7 +283,7 @@ RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
         // TODO: Test this error.
         return FlagsOrErr.takeError();
       if ((*FlagsOrErr & SymbolRef::SF_Common) ||
-          (*FlagsOrErr & SymbolRef::SF_Weak)) {
+          (*FlagsOrErr & SymbolRef::SF_Weak) || isELFGNUUniqueSymbol(Sym)) {
         // Get symbol name.
         if (auto NameOrErr = Sym.getName())
           Symbols.insert(*NameOrErr);
@@ -796,7 +806,10 @@ void RuntimeDyldImpl::writeBytesUnaligned(uint64_t Value, uint8_t *Dst,
 
 Expected<JITSymbolFlags>
 RuntimeDyldImpl::getJITSymbolFlags(const SymbolRef &SR) {
-  return JITSymbolFlags::fromObjectSymbol(SR);
+  auto Flags = JITSymbolFlags::fromObjectSymbol(SR);
+  if (Flags && isELFGNUUniqueSymbol(SR))
+    *Flags |= JITSymbolFlags::Weak;
+  return Flags;
 }
 
 Error RuntimeDyldImpl::emitCommonSymbols(const ObjectFile &Obj,
