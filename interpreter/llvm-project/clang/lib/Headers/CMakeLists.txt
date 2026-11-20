@@ -43,6 +43,11 @@ set(core_files
   varargs.h
   )
 
+set(e2k_files
+  e2kbuiltin.h
+  e2kintrin.h
+  )
+
 set(arm_common_files
   # Headers shared by Arm and AArch64
   arm_acle.h
@@ -328,6 +333,7 @@ set(files
   ${spirv_files}
   ${systemz_files}
   ${ve_files}
+  ${e2k_files}
   ${x86_files}
   ${gpu_files}
   ${webassembly_files}
@@ -546,6 +552,7 @@ add_dependencies("clang-resource-headers"
                  "systemz-resource-headers"
                  "ve-resource-headers"
                  "webassembly-resource-headers"
+                 "e2k-resource-headers"
                  "x86-resource-headers"
                  "opencl-resource-headers"
                  "openmp-resource-headers"
@@ -571,6 +578,7 @@ add_header_target("riscv-resource-headers" "${riscv_files};${riscv_generated_fil
 add_header_target("systemz-resource-headers" "${systemz_files};${zos_wrapper_files}")
 add_header_target("ve-resource-headers" "${ve_files}")
 add_header_target("webassembly-resource-headers" "${webassembly_files}")
+add_header_target("e2k-resource-headers" "${e2k_files}")
 add_header_target("x86-resource-headers" "${x86_files}")
 add_header_target("gpu-resource-headers" "${gpu_files}")
 
@@ -764,6 +772,12 @@ install(
   DESTINATION ${header_install_dir}
   EXCLUDE_FROM_ALL
   COMPONENT webassembly-resource-headers)
+
+install(
+  FILES ${e2k_files}
+  DESTINATION ${header_install_dir}
+  EXCLUDE_FROM_ALL
+  COMPONENT e2k-resource-headers)
 
 install(
   FILES ${x86_files}

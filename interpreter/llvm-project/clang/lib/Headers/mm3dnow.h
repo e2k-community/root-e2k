@@ -7,6 +7,12 @@
  *===-----------------------------------------------------------------------===
  */
 
+#ifdef __LLVM_LCCRT_INTRIN_mm3dnow_h__
+
+#include __LLVM_LCCRT_INTRIN_mm3dnow_h__
+
+#else /* !__LLVM_LCCRT_INTRIN_mm3dnow_h__ */
+
 // 3dNow intrinsics are no longer supported.
 
 #ifndef _MM3DNOW_H_INCLUDED
@@ -20,3 +26,5 @@
 #include <prfchwintrin.h>
 
 #endif
+
+#endif /* __LLVM_LCCRT_INTRIN_mm3dnow_h__ */

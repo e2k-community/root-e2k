@@ -7,6 +7,12 @@
  *===-----------------------------------------------------------------------===
  */
 
+#ifdef __LLVM_LCCRT_INTRIN_xopintrin_h__
+
+#include __LLVM_LCCRT_INTRIN_xopintrin_h__
+
+#else /* !__LLVM_LCCRT_INTRIN_xopintrin_h__ */
+
 #ifndef __X86INTRIN_H
 #error "Never use <xopintrin.h> directly; include <x86intrin.h> instead."
 #endif
@@ -778,3 +784,5 @@ _mm256_frcz_pd(__m256d __A)
 #undef __DEFAULT_FN_ATTRS256_CONSTEXPR
 
 #endif /* __XOPINTRIN_H */
+
+#endif /* __LLVM_LCCRT_INTRIN_xopintrin_h__ */

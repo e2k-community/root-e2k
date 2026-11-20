@@ -7,6 +7,12 @@
  *===-----------------------------------------------------------------------===
  */
 
+#ifdef __LLVM_LCCRT_INTRIN_cpuid_h__
+
+#include __LLVM_LCCRT_INTRIN_cpuid_h__
+
+#else /* !__LLVM_LCCRT_INTRIN_cpuid_h__ */
+
 #ifndef __CPUID_H
 #define __CPUID_H
 
@@ -449,3 +455,5 @@ static __inline void __cpuidex(int __cpu_info[4], int __leaf, int __subleaf) {
 #endif
 
 #endif /* __CPUID_H */
+
+#endif /* __LLVM_LCCRT_INTRIN_cpuid_h__ */

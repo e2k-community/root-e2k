@@ -7,6 +7,12 @@
  *===-----------------------------------------------------------------------===
  */
 
+#ifdef __LLVM_LCCRT_INTRIN_float_h__
+
+#include __LLVM_LCCRT_INTRIN_float_h__
+
+#else /* !__LLVM_LCCRT_INTRIN_float_h__ */
+
 #if defined(__MVS__) && __has_include_next(<float.h>)
 #include <__float_header_macro.h>
 #include_next <float.h>
@@ -46,3 +52,5 @@
 #endif
 
 #endif /* __MVS__ */
+
+#endif /* __LLVM_LCCRT_INTRIN_float_h__ */
