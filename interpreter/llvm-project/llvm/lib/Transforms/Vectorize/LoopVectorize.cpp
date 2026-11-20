@@ -10109,6 +10109,8 @@ bool LoopVectorizePass::processLoop(Loop *L) {
 
 LoopVectorizeResult LoopVectorizePass::runImpl(Function &F) {
 
+  if (F.hasFnAttribute( "interrupt"))
+    return LoopVectorizeResult(false, false);
   // Don't attempt if
   // 1. the target claims to have no vector registers, and
   // 2. interleaving won't help ILP.

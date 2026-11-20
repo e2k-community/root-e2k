@@ -761,17 +761,21 @@ class InlineCostCallAnalyzer final : public CallAnalyzer {
 
   void onFinalizeSwitch(unsigned JumpTableSize, unsigned NumCaseCluster,
                         bool DefaultDestUnreachable) override {
+    Function *Caller = CandidateCall.getCaller();
+    bool isInterrupt = Caller->hasFnAttribute( "interrupt");
+    int64_t iweight = isInterrupt ? 200*InstrCost : InstrCost;
+
     // If suitable for a jump table, consider the cost for the table size and
     // branch to destination.
     // Maximum valid cost increased in this function.
-    if (JumpTableSize) {
+    if (JumpTableSize && !isInterrupt) {
       // Suppose a default branch includes one compare and one conditional
       // branch if it's reachable.
       if (!DefaultDestUnreachable)
-        addCost(2 * InstrCost);
+        addCost(2 * iweight);
       // Suppose a jump table requires one load and one jump instruction.
       int64_t JTCost =
-          static_cast<int64_t>(JumpTableSize) * InstrCost + 2 * InstrCost;
+          static_cast<int64_t>(JumpTableSize) * iweight + 2 * iweight;
       addCost(JTCost);
       return;
     }
@@ -780,13 +784,13 @@ class InlineCostCallAnalyzer final : public CallAnalyzer {
       // Suppose a comparison includes one compare and one conditional branch.
       // We can reduce a set of instructions if the default branch is
       // undefined.
-      addCost((NumCaseCluster - DefaultDestUnreachable) * 2 * InstrCost);
+      addCost((NumCaseCluster - DefaultDestUnreachable) * 2 * iweight);
       return;
     }
 
     int64_t ExpectedNumberOfCompare =
         getExpectedNumberOfCompare(NumCaseCluster);
-    int64_t SwitchCost = ExpectedNumberOfCompare * 2 * InstrCost;
+    int64_t SwitchCost = ExpectedNumberOfCompare * 2 * iweight;
 
     addCost(SwitchCost);
   }
@@ -3266,6 +3270,25 @@ InlineCost llvm::getInlineCost(
     function_ref<BlockFrequencyInfo &(Function &)> GetBFI,
     ProfileSummaryInfo *PSI, OptimizationRemarkEmitter *ORE,
     function_ref<EphemeralValuesCache &(Function &)> GetEphValuesCache) {
+
+  static int dbgCnt = 0;
+  static int dbgBnd = -2;
+
+  if ( dbgBnd == -2 ) {
+      if ( getenv( "LLVM_INLINE_BOUND") ) {
+          dbgBnd = atoi( getenv( "LLVM_INLINE_BOUND"));
+      } else {
+          dbgBnd = -1;
+      }
+  }
+
+  if ( dbgBnd >= 0 ) {
+     if ( (dbgCnt < dbgBnd) ) {
+         dbgCnt++;
+     } else {
+         return InlineCost::getNever( "LLVM_INLINE_BOUND");
+     }
+  }
 
   auto UserDecision =
       llvm::getAttributeBasedInliningDecision(Call, Callee, CalleeTTI, GetTLI);

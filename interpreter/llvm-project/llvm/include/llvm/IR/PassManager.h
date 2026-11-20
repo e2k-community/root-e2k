@@ -232,7 +232,12 @@ template <>
 LLVM_ABI void printIRUnitNameForStackTrace<Module>(raw_ostream &OS,
                                                    const Module &IR);
 
+#ifdef __EDG__
+// Omit explicit instantiation declaration for edg due to different approaches
+// in realization (mcstrm #35256.35)
+#else /* !__EDG__ */
 extern template class LLVM_TEMPLATE_ABI PassManager<Module>;
+#endif /* __EDG__ */
 
 /// Convenience typedef for a pass manager over modules.
 using ModulePassManager = PassManager<Module>;
@@ -241,7 +246,12 @@ template <>
 LLVM_ABI void printIRUnitNameForStackTrace<Function>(raw_ostream &OS,
                                                      const Function &IR);
 
+#ifdef __EDG__
+// Omit explicit instantiation declaration for edg due to different approaches
+// in realization (mcstrm #35256.35)
+#else /* !__EDG__ */
 extern template class LLVM_TEMPLATE_ABI PassManager<Function>;
+#endif /* __EDG__ */
 
 /// Convenience typedef for a pass manager over functions.
 using FunctionPassManager = PassManager<Function>;

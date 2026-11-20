@@ -2282,6 +2282,10 @@ bool GVNPass::ValueTable::areCallValsEqual(uint32_t Num, uint32_t NewNum,
       break;
   }
 
+  if ( Call->isInlineAsm() ) {
+    return false;
+  }
+
   if (AA->doesNotAccessMemory(Call))
     return true;
 
@@ -2780,6 +2784,13 @@ bool GVNPass::processInstruction(Instruction *I) {
     // If I was the result of a shortcut PRE, it might already be in the table
     // and the best replacement for itself. Nothing to do.
     return false;
+  }
+
+  if ( CallInst *CI = dyn_cast<CallInst>( I) ) {
+    // Dissable optimization for asm inline.
+    if ( CI->isInlineAsm() ) {
+      return false;
+    }
   }
 
   // Remove it!

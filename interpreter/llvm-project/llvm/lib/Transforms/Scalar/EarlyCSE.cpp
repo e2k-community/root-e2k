@@ -40,6 +40,7 @@
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Allocator.h"
@@ -1375,6 +1376,12 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
   // See if any instructions in the block can be eliminated.  If so, do it.  If
   // not, add them to AvailableValues.
   for (Instruction &Inst : make_early_inc_range(*BB)) {
+    if ( CallInst *CI = dyn_cast<CallInst>( &Inst) ) {
+        if ( isa<InlineAsm>( CI->getCalledOperand()) ) {
+            continue;
+        }
+    }
+
     // Dead instructions should just be removed.
     if (isInstructionTriviallyDead(&Inst, &TLI)) {
       LLVM_DEBUG(dbgs() << "EarlyCSE DCE: " << Inst << '\n');

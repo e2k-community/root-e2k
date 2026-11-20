@@ -2082,11 +2082,42 @@ Constant *GetConstantFoldFPValue128(float128 V, Type *Ty) {
 }
 #endif
 
+typedef struct
+{
+#if defined(HAVE_FENV_H)
+  std::fexcept_t flags;
+#endif /* HAVE_FENV_H */
+} llvm_fenv_flags_t;
+
+/// Get the floating-point exception state.
+inline void llvm_fenv_getexceptflag( llvm_fenv_flags_t *feflags) {
+#if defined(HAVE_FENV_H)
+#if HAVE_DECL_FE_ALL_EXCEPT
+  fegetexceptflag(&feflags->flags, FE_ALL_EXCEPT);
+#else /* !HAVE_DECL_FE_ALL_EXCEPT */
+  memset( feflags, 0, sizeof( feflags[0]));
+#endif /* HAVE_DECL_FE_ALL_EXCEPT */
+#endif
+}
+
+/// Set the floating-point exception state.
+inline void llvm_fenv_setexceptflag( llvm_fenv_flags_t *feflags) {
+#if defined(HAVE_FENV_H)
+#if HAVE_DECL_FE_ALL_EXCEPT
+  fesetexceptflag(&feflags->flags, FE_ALL_EXCEPT);
+#endif /* HAVE_DECL_FE_ALL_EXCEPT */
+#endif
+}
+
 /// Clear the floating-point exception state.
 inline void llvm_fenv_clearexcept() {
+#ifndef LLVM_WITH_LCCRT
+#if defined(HAVE_FENV_H)
 #if HAVE_DECL_FE_ALL_EXCEPT
   feclearexcept(FE_ALL_EXCEPT);
+#endif /* HAVE_DECL_FE_ALL_EXCEPT */
 #endif
+#endif /* !LLVM_WITH_LCCRT */
   errno = 0;
 }
 
@@ -2095,10 +2126,16 @@ inline bool llvm_fenv_testexcept() {
   int errno_val = errno;
   if (errno_val == ERANGE || errno_val == EDOM)
     return true;
+#ifndef LLVM_WITH_LCCRT
+#if defined(HAVE_FENV_H)
+  bool feval = false;
 #if HAVE_DECL_FE_ALL_EXCEPT && HAVE_DECL_FE_INEXACT
-  if (fetestexcept(FE_ALL_EXCEPT & ~FE_INEXACT))
+  feval = fetestexcept(FE_ALL_EXCEPT & ~FE_INEXACT);
+#endif /* HAVE_DECL_FE_ALL_EXCEPT && HAVE_DECL_FE_INEXACT */
+  if (feval)
     return true;
 #endif
+#endif /* !LLVM_WITH_LCCRT */
   return false;
 }
 
@@ -2137,12 +2174,18 @@ Constant *ConstantFoldFP(double (*NativeFP)(double), const APFloat &V, Type *Ty,
       DenormMode.Output == DenormalMode::DenormalModeKind::Dynamic)
     return nullptr;
 
+  llvm_fenv_flags_t feflags;
+
+  llvm_fenv_getexceptflag( &feflags);
   llvm_fenv_clearexcept();
   auto Input = FlushWithDenormKind(V, DenormMode.Input);
   double Result = NativeFP(Input.convertToDouble());
   if (llvm_fenv_testexcept()) {
     llvm_fenv_clearexcept();
+    llvm_fenv_setexceptflag( &feflags);
     return nullptr;
+  } else {
+    llvm_fenv_setexceptflag( &feflags);
   }
 
   Constant *Output = GetConstantFoldFPValue(Result, Ty);
@@ -2169,11 +2212,17 @@ Constant *ConstantFoldFP128(float128 (*NativeFP)(float128), const APFloat &V,
 
 Constant *ConstantFoldBinaryFP(double (*NativeFP)(double, double),
                                const APFloat &V, const APFloat &W, Type *Ty) {
+  llvm_fenv_flags_t feflags;
+  
+  llvm_fenv_getexceptflag( &feflags);
   llvm_fenv_clearexcept();
   double Result = NativeFP(V.convertToDouble(), W.convertToDouble());
   if (llvm_fenv_testexcept()) {
     llvm_fenv_clearexcept();
+    llvm_fenv_setexceptflag( &feflags);
     return nullptr;
+  } else {
+    llvm_fenv_setexceptflag( &feflags);
   }
 
   return GetConstantFoldFPValue(Result, Ty);

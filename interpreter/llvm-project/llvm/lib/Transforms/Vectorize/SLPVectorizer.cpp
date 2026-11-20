@@ -23595,6 +23595,8 @@ bool SLPVectorizerPass::runImpl(Function &F, ScalarEvolution *SE_,
                                 OptimizationRemarkEmitter *ORE_) {
   if (!RunSLPVectorization)
     return false;
+  if (F.hasFnAttribute( "interrupt"))
+    return false;
   SE = SE_;
   TTI = TTI_;
   TLI = TLI_;
@@ -26537,6 +26539,9 @@ static bool isReductionCandidate(Instruction *I) {
 bool SLPVectorizerPass::vectorizeHorReduction(
     PHINode *P, Instruction *Root, BasicBlock *BB, BoUpSLP &R,
     SmallVectorImpl<WeakTrackingVH> &PostponedInsts) {
+#ifdef LLVM_WITH_LCCRT
+  return false;
+#endif // LLVM_WITH_LCCRT
   if (!ShouldVectorizeHor)
     return false;
   bool TryOperandsAsNewSeeds = P && isa<BinaryOperator>(Root);

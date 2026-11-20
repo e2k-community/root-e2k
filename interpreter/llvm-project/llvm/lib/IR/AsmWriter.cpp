@@ -2744,6 +2744,8 @@ static void writeAsOperandInternal(raw_ostream &Out, const Value *V,
       Out << "sideeffect ";
     if (IA->isAlignStack())
       Out << "alignstack ";
+    if (IA->isAsmInline())
+      Out << "asminline ";
     // We don't emit the AD_ATT dialect as it's the assumed default.
     if (IA->getDialect() == InlineAsm::AD_Intel)
       Out << "inteldialect ";
@@ -4850,6 +4852,7 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
 
   // Print a nice comment.
   printInfoComment(I);
+  if (AnnotationWriter) AnnotationWriter->emitInstructionEndAnnot(&I, Out);
 }
 
 void AssemblyWriter::printDbgMarker(const DbgMarker &Marker) {

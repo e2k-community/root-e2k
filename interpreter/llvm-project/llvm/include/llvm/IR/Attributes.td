@@ -419,6 +419,7 @@ def NoJumpTables : StrBoolAttr<"no-jump-tables">;
 def NoInlineLineTables : StrBoolAttr<"no-inline-line-tables">;
 def ProfileSampleAccurate : StrBoolAttr<"profile-sample-accurate">;
 def UseSampleProfile : StrBoolAttr<"use-sample-profile">;
+def Aligned : StrBoolAttr<"aligned">;
 def LoaderReplaceable : StrBoolAttr<"loader-replaceable">;
 
 def DenormalFPMath : ComplexStrAttr<"denormal-fp-math", [FnAttr]>;

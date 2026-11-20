@@ -7094,6 +7094,8 @@ Instruction *InstCombinerImpl::foldICmpUsingKnownBits(ICmpInst &I) {
     break;
   }
 
+// TUNE for E2K_BACKEND.
+#if 0
   // Turn a signed comparison into an unsigned one if both operands are known to
   // have the same sign. Set samesign if possible (except for equality
   // predicates).
@@ -7104,6 +7106,7 @@ Instruction *InstCombinerImpl::foldICmpUsingKnownBits(ICmpInst &I) {
     I.setSameSign();
     return &I;
   }
+#endif
 
   return nullptr;
 }

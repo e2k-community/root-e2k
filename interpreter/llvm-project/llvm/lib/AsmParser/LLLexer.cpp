@@ -624,6 +624,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(asm);
   KEYWORD(sideeffect);
   KEYWORD(inteldialect);
+  KEYWORD(asminline);
   KEYWORD(gc);
   KEYWORD(prefix);
   KEYWORD(prologue);

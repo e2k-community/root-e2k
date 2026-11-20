@@ -108,6 +108,18 @@ static bool runOnFunction(Function &F, bool PostInlining) {
   if (F.hasFnAttribute(Attribute::Naked))
     return false;
 
+#ifdef LLVM_WITH_LCCRT
+  llvm::Module *M = F.getParent();
+          
+  if ( M ) {
+      llvm::Triple TargetTriple( M->getTargetTriple());
+      
+      if ( TargetTriple.isElbrus() ) {
+          return false;
+      }
+  }
+#endif /* LLVM_WITH_LCCRT */
+
   // available_externally functions may not have definitions external to the
   // module (e.g. gnu::always_inline). Instrumenting them might lead to linker
   // errors if they are optimized out. Skip them like GCC.

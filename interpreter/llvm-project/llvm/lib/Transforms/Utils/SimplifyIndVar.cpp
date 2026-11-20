@@ -288,6 +288,8 @@ void SimplifyIndvar::eliminateIVComparison(ICmpInst *ICmp,
     return;
   }
 
+// TUNE for E2K_BACKEND.
+#ifndef LLVM_WITH_LCCRT
   if ((ICmpInst::isSigned(OriginalPred) ||
        (ICmpInst::isUnsigned(OriginalPred) && !ICmp->hasSameSign())) &&
       SE->haveSameSign(S, X)) {
@@ -304,6 +306,7 @@ void SimplifyIndvar::eliminateIVComparison(ICmpInst *ICmp,
     Changed = true;
     return;
   }
+#endif /* !LLVM_WITH_LCCRT */
 }
 
 bool SimplifyIndvar::eliminateSDiv(BinaryOperator *SDiv) {

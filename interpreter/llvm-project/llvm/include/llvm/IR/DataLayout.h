@@ -593,6 +593,11 @@ public:
     return getTypeSizeInBits(Ty) == getTypeStoreSizeInBits(Ty);
   }
 
+#ifdef LLVM_WITH_LCCRT
+  /// Special version of getTypeAllocSize for FixedVectors.
+  TypeSize getFixedVectorAllocSize(Type *Ty) const;
+#endif /* LLVM_WITH_LCCRT */
+
   /// Returns the offset in bytes between successive objects of the
   /// specified type, including alignment padding.
   ///

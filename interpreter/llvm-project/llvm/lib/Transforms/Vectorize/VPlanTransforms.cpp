@@ -3891,7 +3891,12 @@ void VPlanTransforms::convertToConcreteRecipes(VPlan &Plan) {
       if (match(&R, m_BranchOnCount(m_VPValue(IV), m_VPValue(TC)))) {
         auto *BranchOnCountInst = cast<VPInstruction>(&R);
         DebugLoc DL = BranchOnCountInst->getDebugLoc();
+#ifndef LLVM_WITH_LCCRT
         VPValue *Cond = Builder.createICmp(CmpInst::ICMP_EQ, IV, TC, DL);
+#else  /* LLVM_WITH_LCCRT */
+        // TUNE for E2K_BACKEND.
+        VPValue *Cond = Builder.createICmp(CmpInst::ICMP_SGE, IV, TC, DL);
+#endif /* LLVM_WITH_LCCRT */
         Builder.createNaryOp(VPInstruction::BranchOnCond, Cond, DL);
         ToRemove.push_back(BranchOnCountInst);
         continue;

@@ -175,6 +175,7 @@ static void scalarizeMaskedLoad(const DataLayout &DL, bool HasBranchDivergence,
   const Align AdjustedAlignVal =
       commonAlignment(AlignVal, EltTy->getPrimitiveSizeInBits() / 8);
   unsigned VectorWidth = cast<FixedVectorType>(VecType)->getNumElements();
+  bool PredicateBitcast = false && (VectorWidth != 1);
 
   // The result vector
   Value *VResult = Src0;
@@ -225,7 +226,7 @@ static void scalarizeMaskedLoad(const DataLayout &DL, bool HasBranchDivergence,
   // better results on X86 at least. However, don't do this on GPUs and other
   // machines with divergence, as there each i1 needs a vector register.
   Value *SclrMask = nullptr;
-  if (VectorWidth != 1 && !HasBranchDivergence) {
+  if (PredicateBitcast && !HasBranchDivergence) {
     Type *SclrMaskTy = Builder.getIntNTy(VectorWidth);
     SclrMask = Builder.CreateBitCast(Mask, SclrMaskTy, "scalar_mask");
   }
@@ -344,6 +345,7 @@ static void scalarizeMaskedStore(const DataLayout &DL, bool HasBranchDivergence,
   const Align AdjustedAlignVal =
       commonAlignment(AlignVal, EltTy->getPrimitiveSizeInBits() / 8);
   unsigned VectorWidth = cast<FixedVectorType>(VecType)->getNumElements();
+  bool PredicateBitcast = false && (VectorWidth != 1);
 
   if (isConstantIntVector(Mask)) {
     for (unsigned Idx = 0; Idx < VectorWidth; ++Idx) {
@@ -383,7 +385,7 @@ static void scalarizeMaskedStore(const DataLayout &DL, bool HasBranchDivergence,
   // better results on X86 at least. However, don't do this on GPUs or other
   // machines with branch divergence, as there each i1 takes up a register.
   Value *SclrMask = nullptr;
-  if (VectorWidth != 1 && !HasBranchDivergence) {
+  if (PredicateBitcast && !HasBranchDivergence) {
     Type *SclrMaskTy = Builder.getIntNTy(VectorWidth);
     SclrMask = Builder.CreateBitCast(Mask, SclrMaskTy, "scalar_mask");
   }
@@ -487,6 +489,7 @@ static void scalarizeMaskedGather(const DataLayout &DL,
   // The result vector
   Value *VResult = Src0;
   unsigned VectorWidth = VecType->getNumElements();
+  bool PredicateBitcast = false && (VectorWidth != 1);
 
   // Shorten the way if the mask is a vector of constants.
   if (isConstantIntVector(Mask)) {
@@ -508,7 +511,7 @@ static void scalarizeMaskedGather(const DataLayout &DL,
   // better results on X86 at least. However, don't do this on GPUs or other
   // machines with branch divergence, as there, each i1 takes up a register.
   Value *SclrMask = nullptr;
-  if (VectorWidth != 1 && !HasBranchDivergence) {
+  if (PredicateBitcast && !HasBranchDivergence) {
     Type *SclrMaskTy = Builder.getIntNTy(VectorWidth);
     SclrMask = Builder.CreateBitCast(Mask, SclrMaskTy, "scalar_mask");
   }
@@ -621,6 +624,7 @@ static void scalarizeMaskedScatter(const DataLayout &DL,
 
   Align AlignVal = CI->getParamAlign(1).valueOrOne();
   unsigned VectorWidth = SrcFVTy->getNumElements();
+  bool PredicateBitcast = false && (VectorWidth != 1);
 
   // Shorten the way if the mask is a vector of constants.
   if (isConstantIntVector(Mask)) {
@@ -639,7 +643,7 @@ static void scalarizeMaskedScatter(const DataLayout &DL,
   // If the mask is not v1i1, use scalar bit test operations. This generates
   // better results on X86 at least.
   Value *SclrMask = nullptr;
-  if (VectorWidth != 1 && !HasBranchDivergence) {
+  if (PredicateBitcast && !HasBranchDivergence) {
     Type *SclrMaskTy = Builder.getIntNTy(VectorWidth);
     SclrMask = Builder.CreateBitCast(Mask, SclrMaskTy, "scalar_mask");
   }
@@ -713,6 +717,7 @@ static void scalarizeMaskedExpandLoad(const DataLayout &DL,
   Builder.SetCurrentDebugLocation(CI->getDebugLoc());
 
   unsigned VectorWidth = VecType->getNumElements();
+  bool PredicateBitcast = false && (VectorWidth != 1);
 
   // The result vector
   Value *VResult = PassThru;
@@ -754,7 +759,7 @@ static void scalarizeMaskedExpandLoad(const DataLayout &DL,
   // better results on X86 at least. However, don't do this on GPUs or other
   // machines with branch divergence, as there, each i1 takes up a register.
   Value *SclrMask = nullptr;
-  if (VectorWidth != 1 && !HasBranchDivergence) {
+  if (PredicateBitcast && !HasBranchDivergence) {
     Type *SclrMaskTy = Builder.getIntNTy(VectorWidth);
     SclrMask = Builder.CreateBitCast(Mask, SclrMaskTy, "scalar_mask");
   }
@@ -855,6 +860,7 @@ static void scalarizeMaskedCompressStore(const DataLayout &DL,
       commonAlignment(Alignment, EltTy->getPrimitiveSizeInBits() / 8);
 
   unsigned VectorWidth = VecType->getNumElements();
+  bool PredicateBitcast = false && (VectorWidth != 1);
 
   // Shorten the way if the mask is a vector of constants.
   if (isConstantIntVector(Mask)) {
@@ -876,7 +882,7 @@ static void scalarizeMaskedCompressStore(const DataLayout &DL,
   // better results on X86 at least. However, don't do this on GPUs or other
   // machines with branch divergence, as there, each i1 takes up a register.
   Value *SclrMask = nullptr;
-  if (VectorWidth != 1 && !HasBranchDivergence) {
+  if (PredicateBitcast && !HasBranchDivergence) {
     Type *SclrMaskTy = Builder.getIntNTy(VectorWidth);
     SclrMask = Builder.CreateBitCast(Mask, SclrMaskTy, "scalar_mask");
   }

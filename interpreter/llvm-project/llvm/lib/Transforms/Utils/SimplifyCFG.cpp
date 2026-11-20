@@ -1540,6 +1540,12 @@ static unsigned skippedInstrFlags(Instruction *I) {
 // Returns true if it is safe to reorder an instruction across preceding
 // instructions in a basic block.
 static bool isSafeToHoistInstr(Instruction *I, unsigned Flags) {
+#ifdef LLVM_WITH_LCCRT
+  // Linux e2k-kernel has some special asm-inline operations with ctp's data flow.
+  if ( I->mayHaveSideEffects() )
+    return false;
+#endif // LLVM_WITH_LCCRT
+
   // Don't reorder a store over a load.
   if ((Flags & SkipReadMem) && I->mayWriteToMemory())
     return false;
@@ -8903,6 +8909,7 @@ bool SimplifyCFGOpt::simplifyOnce(BasicBlock *BB) {
   if (MergeBlockIntoPredecessor(BB, DTU))
     return true;
 
+#ifndef LLVM_WITH_LCCRT
   if (SinkCommon && Options.SinkCommonInsts)
     if (sinkCommonCodeFromPredecessors(BB, DTU) ||
         mergeCompatibleInvokes(BB, DTU)) {
@@ -8913,6 +8920,7 @@ bool SimplifyCFGOpt::simplifyOnce(BasicBlock *BB) {
       // after which we'd need a whole EarlyCSE pass run to cleanup them.
       return true;
     }
+#endif /* !LLVM_WITH_LCCRT */
 
   IRBuilder<> Builder(BB);
 

@@ -42,6 +42,25 @@ cl::opt<bool> ProfcheckDisableMetadataFixes(
 
 } // end namespace llvm
 
+extern "C" void delBreak();
+
+void __attribute__((noinline))
+delBreak() {
+    printf( "delBreak:\n");
+}
+
+void
+Instruction::initIdent() {
+#if 0
+    static int64_t count = 0;
+
+    ident_ = count;
+    count++;
+#endif
+
+    return;
+} /* Instruction::initIdent */
+
 InsertPosition::InsertPosition(Instruction *InsertBefore)
     : InsertAt(InsertBefore ? InsertBefore->getIterator()
                             : InstListType::iterator()) {}
@@ -57,10 +76,20 @@ Instruction::Instruction(Type *ty, unsigned it, AllocInfo AllocInfo,
     assert(BB && "Instruction to insert before is not in a basic block!");
     insertInto(BB, InsertBefore);
   }
+  initIdent();
 }
 
 Instruction::~Instruction() {
   assert(!getParent() && "Instruction still linked in the program!");
+#if 0
+  if ( 0 ) {
+      llvm::dbgs() << "delete: " << ident_ << " : " << *this << "\n";
+      if ( ident_ == 0 ) {
+          delBreak();
+      }
+  }  
+#endif
+
 
   // Replace any extant metadata uses of this instruction with poison to
   // preserve debug info accuracy. Some alternatives include:

@@ -1081,6 +1081,11 @@ protected:
 private:
   /// Create a copy of this instruction.
   Instruction *cloneImpl() const;
+
+  void initIdent();
+#if 0
+  int64_t ident_;
+#endif
 };
 
 inline void ilist_alloc_traits<Instruction>::deleteNode(Instruction *V) {
