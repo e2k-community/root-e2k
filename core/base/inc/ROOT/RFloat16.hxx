@@ -52,7 +52,12 @@
 ///
 /// Unless predefined it will be enabled automatically when the `__F16C__` symbol is defined, which some compilers do on
 /// supporting platforms.
-#define HALF_ENABLE_F16C_INTRINSICS __F16C__
+#if defined(__F16C__) && !defined(__e2k__)
+#define HALF_ENABLE_F16C_INTRINSICS 1
+#else
+// On e2k lcc defines __F16C__ but only emulates the x86 intrinsics (slowly).
+#define HALF_ENABLE_F16C_INTRINSICS 0
+#endif
 #endif
 #if HALF_ENABLE_F16C_INTRINSICS
 #include <immintrin.h>
