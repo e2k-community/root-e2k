@@ -2864,8 +2864,10 @@ size_t RuntimeDyldELF::getGOTEntrySize() {
   case Triple::ppc64:
   case Triple::ppc64le:
   case Triple::systemz:
+  case Triple::e2k64:
     Result = sizeof(uint64_t);
     break;
+  case Triple::e2k32:
   case Triple::x86:
   case Triple::arm:
   case Triple::thumb:
