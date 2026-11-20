@@ -92,7 +92,7 @@ static constexpr std::array<Builtin::Info, NumSMEBuiltins> BuiltinInfos = {
 } // namespace SME
 } // namespace clang
 
-static constexpr llvm::StringTable BuiltinSVENeonBridgeStrings =
+static LLVM_STRING_TABLE_CONSTEXPR llvm::StringTable BuiltinSVENeonBridgeStrings =
     CLANG_BUILTIN_STR_TABLE_START
 #define TARGET_BUILTIN CLANG_TARGET_BUILTIN_STR_TABLE
 #define GET_SVE_BUILTINS
@@ -100,7 +100,7 @@ static constexpr llvm::StringTable BuiltinSVENeonBridgeStrings =
 #undef GET_SVE_BUILTINS
 #undef TARGET_BUILTIN
     ;
-static constexpr llvm::StringTable BuiltinAArch64Strings =
+static LLVM_STRING_TABLE_CONSTEXPR llvm::StringTable BuiltinAArch64Strings =
     CLANG_BUILTIN_STR_TABLE_START
 #define BUILTIN CLANG_BUILTIN_STR_TABLE
 #define TARGET_BUILTIN CLANG_TARGET_BUILTIN_STR_TABLE

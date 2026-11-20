@@ -306,7 +306,7 @@ static constexpr int NumBuiltins =
 static_assert(NumBuiltins ==
               (NumBaseBuiltins + NumLSXBuiltins + NumLASXBuiltins));
 
-static constexpr llvm::StringTable BuiltinBaseStrings =
+static LLVM_STRING_TABLE_CONSTEXPR llvm::StringTable BuiltinBaseStrings =
     CLANG_BUILTIN_STR_TABLE_START
 #define TARGET_BUILTIN CLANG_TARGET_BUILTIN_STR_TABLE
 #include "clang/Basic/BuiltinsLoongArchBase.def"
@@ -319,7 +319,7 @@ static constexpr auto BuiltinBaseInfos = Builtin::MakeInfos<NumBaseBuiltins>({
 #undef TARGET_BUILTIN
 });
 
-static constexpr llvm::StringTable BuiltinLSXStrings =
+static LLVM_STRING_TABLE_CONSTEXPR llvm::StringTable BuiltinLSXStrings =
     CLANG_BUILTIN_STR_TABLE_START
 #define TARGET_BUILTIN CLANG_TARGET_BUILTIN_STR_TABLE
 #include "clang/Basic/BuiltinsLoongArchLSX.def"
@@ -332,7 +332,7 @@ static constexpr auto BuiltinLSXInfos = Builtin::MakeInfos<NumLSXBuiltins>({
 #undef TARGET_BUILTIN
 });
 
-static constexpr llvm::StringTable BuiltinLASXStrings =
+static LLVM_STRING_TABLE_CONSTEXPR llvm::StringTable BuiltinLASXStrings =
     CLANG_BUILTIN_STR_TABLE_START
 #define TARGET_BUILTIN CLANG_TARGET_BUILTIN_STR_TABLE
 #include "clang/Basic/BuiltinsLoongArchLASX.def"

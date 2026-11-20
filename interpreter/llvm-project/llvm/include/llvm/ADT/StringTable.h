@@ -15,6 +15,17 @@
 #include <iterator>
 #include <limits>
 
+// lcc (EDG front end) refuses to constant-evaluate very large char arrays
+// ("type is too large for constant expression evaluation"), so big string
+// tables are dynamically initialized there instead.
+#ifndef LLVM_STRING_TABLE_CONSTEXPR
+#if defined(__LCC__)
+#define LLVM_STRING_TABLE_CONSTEXPR const
+#else
+#define LLVM_STRING_TABLE_CONSTEXPR constexpr
+#endif
+#endif
+
 namespace llvm {
 
 /// A table of densely packed, null-terminated strings indexed by offset.

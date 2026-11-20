@@ -87,7 +87,7 @@ void StringToOffsetTable::EmitStringTableDef(raw_ostream &OS,
 {1} llvm::StringTable
 {2}{0} = {0}Storage;
 )",
-                Name, ClassPrefix.empty() ? "static constexpr" : "const",
+                Name, ClassPrefix.empty() ? "static LLVM_STRING_TABLE_CONSTEXPR" : "const",
                 ClassPrefix);
 }
 

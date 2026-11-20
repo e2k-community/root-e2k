@@ -282,7 +282,7 @@ namespace RVV {
 #define GET_RISCVV_BUILTIN_STR_TABLE
 #include "clang/Basic/riscv_vector_builtins.inc"
 #undef GET_RISCVV_BUILTIN_STR_TABLE
-static_assert(BuiltinStrings.size() < 100'000);
+static_assert(sizeof(BuiltinStringsStorage) < 100'000);
 
 static constexpr std::array<Builtin::Info, NumRVVBuiltins> BuiltinInfos = {
 #define GET_RISCVV_BUILTIN_INFOS

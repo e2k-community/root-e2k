@@ -90,7 +90,7 @@ const LangASMap AMDGPUTargetInfo::AMDGPUDefIsPrivMap = {
 static constexpr int NumBuiltins =
     clang::AMDGPU::LastTSBuiltin - Builtin::FirstTSBuiltin;
 
-static constexpr llvm::StringTable BuiltinStrings =
+static LLVM_STRING_TABLE_CONSTEXPR llvm::StringTable BuiltinStrings =
     CLANG_BUILTIN_STR_TABLE_START
 #define BUILTIN CLANG_BUILTIN_STR_TABLE
 #define TARGET_BUILTIN CLANG_TARGET_BUILTIN_STR_TABLE

@@ -21,7 +21,7 @@ using namespace clang::targets;
 static constexpr int NumBuiltins =
     XCore::LastTSBuiltin - Builtin::FirstTSBuiltin;
 
-static constexpr llvm::StringTable BuiltinStrings =
+static LLVM_STRING_TABLE_CONSTEXPR llvm::StringTable BuiltinStrings =
     CLANG_BUILTIN_STR_TABLE_START
 #define BUILTIN CLANG_BUILTIN_STR_TABLE
 #include "clang/Basic/BuiltinsXCore.def"
