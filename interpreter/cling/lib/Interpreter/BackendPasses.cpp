@@ -512,6 +512,14 @@ void BackendPasses::CreatePasses(int OptLevel, llvm::ModulePassManager& MPM,
   SI.registerCallbacks(PIC, &MAM);
 
   PipelineTuningOptions PTO;
+  // On Elbrus the JIT'ed IR is optimized and vectorized again by lccopt (the
+  // lccrt backend). LLVM's loop vectorizer crashes in a libCling built by lcc
+  // (SIGILL in VPlan simplification, plb2 nqueen): leave it to lccopt.
+  if (m_TM.getTargetTriple().isElbrus()) {
+    PTO.LoopVectorization = false;
+    PTO.LoopInterleaving = false;
+    PTO.SLPVectorization = false;
+  }
   std::optional<PGOOptions> PGOOpt;
   PassBuilder PB(&m_TM, PTO, PGOOpt, &PIC);
 
