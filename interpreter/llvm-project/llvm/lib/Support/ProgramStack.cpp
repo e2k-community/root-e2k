@@ -32,7 +32,7 @@ uintptr_t llvm::getStackPointer() {
 #elif defined(_MSC_VER)
   return (uintptr_t)_AddressOfReturnAddress();
 #else
-  volatile char CharOnStack = 0;
+  char CharOnStack = 0;
   // The volatile store here is intended to escape the local variable, to
   // prevent the compiler from optimizing CharOnStack into anything other
   // than a char on the stack.
