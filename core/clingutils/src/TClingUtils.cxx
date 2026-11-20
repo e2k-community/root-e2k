@@ -319,7 +319,12 @@ std::string AnnotatedRecordDecl::BuildDemangledTypeInfo(const clang::RecordDecl 
 #else
       char* demangledTIName = TClassEdit::DemangleName(mangledName.c_str(), errDemangle);
       if (!errDemangle && demangledTIName) {
+#ifdef __e2k__
+         // The lcc runtime demangler capitalizes the prefix.
+         static const char typeinfoNameFor[] = "Typeinfo for ";
+#else
          static const char typeinfoNameFor[] = "typeinfo for ";
+#endif
          if (!strncmp(demangledTIName, typeinfoNameFor, strlen(typeinfoNameFor))) {
             std::string demangledName = demangledTIName + strlen(typeinfoNameFor);
 #endif

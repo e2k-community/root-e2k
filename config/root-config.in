@@ -249,6 +249,10 @@ linuxloong64)
    # loong64 Linux
    auxlibs="-lm -ldl -rdynamic"
    ;;
+linuxe2k)
+   # Elbrus (e2k) Linux
+   auxlibs="-lm -ldl -rdynamic"
+   ;;
 freebsd*)
    # FreeBSD
    auxlibs="-lm"
