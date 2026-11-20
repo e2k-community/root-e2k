@@ -8819,7 +8819,11 @@ LccrtFunctionEmitter::makeAtomicrmw( const Instruction &O, lccrt_v_ptr res, lccr
     Type *T = RMW.getType();
     lccrt_type_ptr tr = le.makeType( T);
     bool isfloat = false;
-    lccrt_atomic_ordering_abi_t labi = LCCRT_ATOMIC_ORD_ABI_SEQ_CST;
+    // C11/C++11 memory-order ABI values (__ATOMIC_*). Spelled out here because
+    // lccrt_atomic_ordering_abi_t is missing from older lccrt.h releases.
+    enum { ORD_RELAXED = 0, ORD_ACQUIRE = 2, ORD_RELEASE = 3,
+           ORD_ACQ_REL = 4, ORD_SEQ_CST = 5 };
+    unsigned labi = ORD_SEQ_CST;
 
     if ( isa<PointerType>( T) ) {
         bw = 64 / 8;
@@ -8864,13 +8868,13 @@ LccrtFunctionEmitter::makeAtomicrmw( const Instruction &O, lccrt_v_ptr res, lccr
     }
 
     switch ( RMW.getOrdering() ) {
-      case AtomicOrdering::NotAtomic: labi = LCCRT_ATOMIC_ORD_ABI_RELAXED; break;
-      case AtomicOrdering::Unordered: labi = LCCRT_ATOMIC_ORD_ABI_RELEASE; break;
-      case AtomicOrdering::Monotonic: labi = LCCRT_ATOMIC_ORD_ABI_RELEASE; break;
-      case AtomicOrdering::Acquire: labi = LCCRT_ATOMIC_ORD_ABI_ACQUIRE; break;
-      case AtomicOrdering::Release: labi = LCCRT_ATOMIC_ORD_ABI_RELEASE; break;
-      case AtomicOrdering::AcquireRelease: labi = LCCRT_ATOMIC_ORD_ABI_ACQ_REL; break;
-      case AtomicOrdering::SequentiallyConsistent: labi = LCCRT_ATOMIC_ORD_ABI_SEQ_CST; break;
+      case AtomicOrdering::NotAtomic: labi = ORD_RELAXED; break;
+      case AtomicOrdering::Unordered: labi = ORD_RELEASE; break;
+      case AtomicOrdering::Monotonic: labi = ORD_RELEASE; break;
+      case AtomicOrdering::Acquire: labi = ORD_ACQUIRE; break;
+      case AtomicOrdering::Release: labi = ORD_RELEASE; break;
+      case AtomicOrdering::AcquireRelease: labi = ORD_ACQ_REL; break;
+      case AtomicOrdering::SequentiallyConsistent: labi = ORD_SEQ_CST; break;
       default: errorDump( &RMW);
     }
 
