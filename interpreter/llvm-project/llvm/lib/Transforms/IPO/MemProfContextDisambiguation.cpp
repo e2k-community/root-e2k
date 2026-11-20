@@ -3333,6 +3333,8 @@ void CallsiteContextGraph<DerivedCCG, FuncTy, CallTy>::check() const {
   }
 }
 
+// Specializations must be declared in namespace llvm (required by EDG/lcc).
+namespace llvm {
 template <typename DerivedCCG, typename FuncTy, typename CallTy>
 struct GraphTraits<const CallsiteContextGraph<DerivedCCG, FuncTy, CallTy> *> {
   using GraphType = const CallsiteContextGraph<DerivedCCG, FuncTy, CallTy> *;
@@ -3545,6 +3547,7 @@ template <typename DerivedCCG, typename FuncTy, typename CallTy>
 bool DOTGraphTraits<
     const CallsiteContextGraph<DerivedCCG, FuncTy, CallTy> *>::DoHighlight =
     false;
+} // namespace llvm
 
 template <typename DerivedCCG, typename FuncTy, typename CallTy>
 void CallsiteContextGraph<DerivedCCG, FuncTy, CallTy>::exportToDot(
