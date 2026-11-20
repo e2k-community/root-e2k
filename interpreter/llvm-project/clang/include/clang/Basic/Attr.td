@@ -465,6 +465,7 @@ class TargetSpec {
 class TargetArch<list<string> arches> : TargetSpec {
   let Arches = arches;
 }
+def TargetElbrus : TargetArch<["e2k32", "e2k64", "e2k128"]>;
 def TargetARM : TargetArch<["arm", "thumb", "armeb", "thumbeb"]>;
 def TargetAArch64 : TargetArch<["aarch64", "aarch64_be", "aarch64_32"]>;
 def TargetAMDGPU : TargetArch<["amdgcn", "r600"]>;
@@ -1862,6 +1863,31 @@ def AllocSize : InheritableAttr {
               ParamIdxArgument<"NumElemsParam", /*opt*/ 1>];
   let TemplateDependent = 1;
   let Documentation = [AllocSizeDocs];
+}
+
+def ElbrusCheckStack : InheritableAttr, TargetSpecificAttr<TargetElbrus> {
+  let Spellings = [GCC<"check_stack">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [ElbrusCheckStackDocs];
+}
+
+def ElbrusInterrupt : InheritableAttr, TargetSpecificAttr<TargetElbrus> {
+  let Spellings = [GCC<"interrupt">];
+  let Subjects = SubjectList<[Function]>;
+  let ParseKind = "Interrupt";
+  let Documentation = [ElbrusCheckStackDocs];
+}
+
+def ElbrusNoLoopApb : InheritableAttr, TargetSpecificAttr<TargetElbrus> {
+  let Spellings = [GCC<"no_loop_apb">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [Undocumented];
+}
+
+def ElbrusNoSemiSpecLd : InheritableAttr, TargetSpecificAttr<TargetElbrus> {
+  let Spellings = [GCC<"no_semi_spec_ld">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [Undocumented];
 }
 
 def EnableIf : InheritableAttr {
@@ -4516,6 +4542,18 @@ def InitSeg : Attr {
   }];
 }
 
+def AsmInline : Attr {
+  let Spellings = [Pragma<"", "asm_inline">];
+  let Args = [];
+  let SemaHandler = 0;
+  let Documentation = [Undocumented];
+  let AdditionalMembers = [{
+  void printPrettyPragma(raw_ostream &OS, const PrintingPolicy &Policy) const {
+    OS << "";
+  }
+  }];
+}
+
 def LoopHint : Attr {
   /// #pragma clang loop <option> directive
   /// vectorize: vectorizes loop operations if State == Enable.
@@ -4526,6 +4564,8 @@ def LoopHint : Attr {
   /// unroll_count: unrolls loop 'Value' times.
   /// unroll_and_jam: attempt to unroll and jam loop if State == Enable.
   /// unroll_and_jam_count: unroll and jams loop 'Value' times.
+  /// loop count: hint about loop iterations number.
+  /// ivdep: hint about loop iterations memory independence.
   /// distribute: attempt to distribute loop if State == Enable.
   /// pipeline: disable pipelining loop if State == Disable.
   /// pipeline_initiation_interval: create loop schedule with initiation interval equal to 'Value'.
@@ -4537,16 +4577,19 @@ def LoopHint : Attr {
 
   let Spellings = [Pragma<"clang", "loop">, Pragma<"", "unroll">,
                    Pragma<"", "nounroll">, Pragma<"", "unroll_and_jam">,
-                   Pragma<"", "nounroll_and_jam">];
+                   Pragma<"", "nounroll_and_jam">, Pragma<"", "count">,
+                   Pragma<"", "ivdep">];
 
   /// State of the loop optimization specified by the spelling.
   let Args = [EnumArgument<"Option", "OptionType", /*is_string=*/false,
                           ["vectorize", "vectorize_width", "interleave", "interleave_count",
                            "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count",
+                           "count", "ivdep",
                            "pipeline", "pipeline_initiation_interval", "distribute",
                            "vectorize_predicate"],
                           ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount",
                            "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount",
+                           "LoopCount", "Ivdep",
                            "PipelineDisabled", "PipelineInitiationInterval", "Distribute",
                            "VectorizePredicate"]>,
               EnumArgument<"State", "LoopHintState", /*is_string=*/false,
@@ -4567,6 +4610,8 @@ def LoopHint : Attr {
     case UnrollCount: return "unroll_count";
     case UnrollAndJam: return "unroll_and_jam";
     case UnrollAndJamCount: return "unroll_and_jam_count";
+    case LoopCount: return "count";
+    case Ivdep: return "ivdep";
     case PipelineDisabled: return "pipeline";
     case PipelineInitiationInterval: return "pipeline_initiation_interval";
     case Distribute: return "distribute";

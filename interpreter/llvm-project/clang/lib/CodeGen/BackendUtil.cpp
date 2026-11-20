@@ -423,6 +423,10 @@ static bool initTargetOptions(const CompilerInstance &CI,
   if (CodeGenOpts.hasWasmExceptions())
     Options.ExceptionModel = llvm::ExceptionHandling::Wasm;
 
+  Options.CodegenLccrt = CodeGenOpts.CodegenLccrt;
+  Options.LccrtIpa = CodeGenOpts.LccrtIpa;
+  Options.LccrtBackendDebug = CodeGenOpts.LccrtBackendDebug;
+  Options.LccrtBackendOptions = CodeGenOpts.LccrtBackendOptions;
   Options.NoInfsFPMath = LangOpts.NoHonorInfs;
   Options.NoNaNsFPMath = LangOpts.NoHonorNaNs;
   Options.NoZerosInBSS = CodeGenOpts.NoZeroInitializedInBSS;

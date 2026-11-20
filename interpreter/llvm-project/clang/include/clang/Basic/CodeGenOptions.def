@@ -188,6 +188,9 @@ CODEGENOPT(NoWarn            , 1, 0, Benign) ///< Set when -Wa,--no-warn is enab
 CODEGENOPT(NoTypeCheck       , 1, 0, Benign) ///< Set when -Wa,--no-type-check is enabled.
 CODEGENOPT(MisExpect         , 1, 0, Benign) ///< Set when -Wmisexpect is enabled
 CODEGENOPT(EnableSegmentedStacks , 1, 0, Benign) ///< Set when -fsplit-stack is enabled.
+CODEGENOPT(CodegenLccrt      , 1, 0, Benign) ///< Set when -fcodegen-lccrt is enabled.
+CODEGENOPT(LccrtIpa          , 1, 0, Benign) ///< Set when -flccrt-ipa is enabled.
+CODEGENOPT(LccrtBackendDebug , 1, 0, Benign) ///< Set when -flccrt-backend-debug is enabled.
 CODEGENOPT(StackClashProtector, 1, 0, Benign) ///< Set when -fstack-clash-protection is enabled.
 CODEGENOPT(NoImplicitFloat   , 1, 0, Benign) ///< Set when -mno-implicit-float is enabled.
 CODEGENOPT(NullPointerIsValid , 1, 0, Benign) ///< Assume Null pointer deference is defined.

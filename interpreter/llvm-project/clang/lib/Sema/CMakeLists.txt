@@ -31,6 +31,7 @@ add_clang_library(clangSema
   Sema.cpp
   SemaAMDGPU.cpp
   SemaARM.cpp
+  SemaElbrus.cpp
   SemaAVR.cpp
   SemaAccess.cpp
   SemaAttr.cpp

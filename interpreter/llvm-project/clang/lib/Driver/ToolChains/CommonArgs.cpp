@@ -10,6 +10,7 @@
 #include "Arch/AArch64.h"
 #include "Arch/ARM.h"
 #include "Arch/CSKY.h"
+#include "Arch/Elbrus.h"
 #include "Arch/LoongArch.h"
 #include "Arch/M68k.h"
 #include "Arch/Mips.h"
@@ -25,6 +26,7 @@
 #include "Solaris.h"
 #include "ToolChains/Cuda.h"
 #include "clang/Basic/CodeGenOptions.h"
+#include "clang/Basic/Version.h"
 #include "clang/Config/config.h"
 #include "clang/Driver/Action.h"
 #include "clang/Driver/Compilation.h"
@@ -571,6 +573,12 @@ const char *tools::getLDMOption(const llvm::Triple &T, const ArgList &Args) {
     if (T.isOSIAMCU())
       return "elf_iamcu";
     return "elf_i386";
+  case llvm::Triple::e2k32:
+    return "elf32_e2k";
+  case llvm::Triple::e2k64:
+    return "elf64_e2k";
+  case llvm::Triple::e2k128:
+    return "elf64_e2k_pm";
   case llvm::Triple::aarch64:
     if (T.isOSManagarm())
       return "aarch64managarm";
@@ -729,6 +737,11 @@ std::string tools::getCPUName(const Driver &D, const ArgList &Args,
   default:
     return "";
 
+  case llvm::Triple::e2k32:
+  case llvm::Triple::e2k64:
+  case llvm::Triple::e2k128:
+    return elbrus::getElbrusTargetCPU(Args, T);
+
   case llvm::Triple::aarch64:
   case llvm::Triple::aarch64_32:
   case llvm::Triple::aarch64_be:
@@ -858,6 +871,13 @@ void tools::getTargetFeatures(const Driver &D, const llvm::Triple &Triple,
   case llvm::Triple::thumbeb:
     arm::getARMTargetFeatures(D, Triple, Args, Features, ForAS);
     break;
+
+  case llvm::Triple::e2k32:
+  case llvm::Triple::e2k64:
+  case llvm::Triple::e2k128:
+    elbrus::getElbrusTargetFeatures(D, Triple, Args, Features);
+    break;
+
   case llvm::Triple::ppc:
   case llvm::Triple::ppcle:
   case llvm::Triple::ppc64:
@@ -1439,9 +1459,15 @@ bool tools::addOpenMPRuntime(const Compilation &C, ArgStringList &CmdArgs,
   if (ForceStaticHostRuntime)
     CmdArgs.push_back("-Bstatic");
 
+  const llvm::Triple &Triple = TC.getTriple();
+
   switch (RTKind) {
   case Driver::OMPRT_OMP:
-    CmdArgs.push_back("-lomp");
+    if ( Triple.isElbrus() ) {
+      CmdArgs.push_back("-lomp-" CLANG_VERSION_MAJOR_STRING);
+    } else {
+      CmdArgs.push_back("-lomp");
+    }
     break;
   case Driver::OMPRT_GOMP:
     CmdArgs.push_back("-lgomp");
@@ -2405,6 +2431,8 @@ static void AddUnwindLibrary(const ToolChain &TC, const Driver &D,
       CmdArgs.push_back("-lgcc_eh");
     else
       CmdArgs.push_back("-lgcc_s");
+    if (TC.getTriple().isElbrus())
+      CmdArgs.push_back("-llcc");
     break;
   }
   case ToolChain::UNW_CompilerRT:

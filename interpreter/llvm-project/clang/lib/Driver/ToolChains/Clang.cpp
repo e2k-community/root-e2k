@@ -8,6 +8,7 @@
 
 #include "Clang.h"
 #include "Arch/ARM.h"
+#include "Arch/Elbrus.h"
 #include "Arch/LoongArch.h"
 #include "Arch/Mips.h"
 #include "Arch/PPC.h"
@@ -3687,6 +3688,34 @@ static void RenderTrivialAutoVarInitOptions(const Driver &D,
       D.Diag(diag::err_drv_trivial_auto_var_init_max_size_invalid_value);
     CmdArgs.push_back(
         Args.MakeArgString("-ftrivial-auto-var-init-max-size=" + Val));
+  }
+}
+
+static void RenderLccrtBackendOptions(const ArgList &Args, ArgStringList &CmdArgs) {
+  std::string str;
+
+  for (Arg *A : Args.filtered(options::OPT_flccrt_backend_options,
+                              options::OPT_flb_options,
+                              options::OPT_flb_option))
+  {
+    A->claim();
+    switch (A->getOption().getID()) {
+      case options::OPT_flccrt_backend_options:
+      case options::OPT_flb_options:
+        str = A->getValue();
+        break;
+      case options::OPT_flb_option:
+        if ( !str.empty() ) str += " ";
+        str = str + A->getValue();
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (!str.empty()) {
+    str = "-lccrt-backend-options=" + str;
+    CmdArgs.push_back(Args.MakeArgString(str));
   }
 }
 
@@ -7502,6 +7531,19 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   Args.addOptOutFlag(CmdArgs, options::OPT_fgnu_inline_asm,
                      options::OPT_fno_gnu_inline_asm);
+
+  if (Args.hasFlag(options::OPT_fcodegen_lccrt, options::OPT_fno_codegen_lccrt, 0))
+    CmdArgs.push_back("-codegen-lccrt");
+  if (Args.hasFlag(options::OPT_flccrt_ipa, options::OPT_fno_lccrt_ipa, 0))
+    CmdArgs.push_back("-lccrt-ipa");
+  if (Args.hasFlag(options::OPT_flccrt_backend_debug, options::OPT_fno_lccrt_backend_debug, 0))
+    CmdArgs.push_back("-lccrt-backend-debug");
+  RenderLccrtBackendOptions(Args, CmdArgs);
+
+  if (Args.hasFlag(options::OPT_faligned, options::OPT_fno_aligned, 0))
+    CmdArgs.push_back("-faligned");
+  if (Args.hasFlag(options::OPT_masm_inline, options::OPT_mno_asm_inline, 0))
+    CmdArgs.push_back("-masm-inline");
 
   handleVectorizeLoopsArgs(Args, CmdArgs);
   handleVectorizeSLPArgs(Args, CmdArgs);

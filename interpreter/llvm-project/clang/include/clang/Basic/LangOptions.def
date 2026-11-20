@@ -501,6 +501,9 @@ LANGOPT(CheckConstexprFunctionBodies, 1, 1, Benign,
 
 LANGOPT(BoundsSafety, 1, 0, NotCompatible, "Bounds safety extension for C")
 
+LANGOPT(Aligned, 1, 0, NotCompatible, "only aligned memory access")
+LANGOPT(AsmInline, 1, 0, NotCompatible, "embed into IR inline asm")
+
 LANGOPT(EnableLifetimeSafety, 1, 0, NotCompatible, "Experimental lifetime safety analysis for C++")
 
 LANGOPT(EnableLifetimeSafetyInference, 1, 0, NotCompatible, "Experimental lifetime safety inference analysis for C++")

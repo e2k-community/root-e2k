@@ -44,6 +44,7 @@
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaAMDGPU.h"
 #include "clang/Sema/SemaARM.h"
+#include "clang/Sema/SemaElbrus.h"
 #include "clang/Sema/SemaAVR.h"
 #include "clang/Sema/SemaBPF.h"
 #include "clang/Sema/SemaCUDA.h"
@@ -6280,6 +6281,11 @@ static void handleInterruptAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   case llvm::Triple::x86_64:
     S.X86().handleAnyInterruptAttr(D, AL);
     break;
+  case llvm::Triple::e2k32:
+  case llvm::Triple::e2k64:
+  case llvm::Triple::e2k128:
+    S.Elbrus().handleInterruptAttr(D, AL);
+    break;
   case llvm::Triple::avr:
     S.AVR().handleInterruptAttr(D, AL);
     break;
@@ -7269,6 +7275,15 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
     break;
   case ParsedAttr::AT_AMDGPUMaxNumWorkGroups:
     S.AMDGPU().handleAMDGPUMaxNumWorkGroupsAttr(D, AL);
+    break;
+  case ParsedAttr::AT_ElbrusCheckStack:
+    S.Elbrus().handleElbrusCheckStackAttr(D, AL);
+    break;
+  case ParsedAttr::AT_ElbrusNoLoopApb:
+    S.Elbrus().handleElbrusNoLoopApbAttr(D, AL);
+    break;
+  case ParsedAttr::AT_ElbrusNoSemiSpecLd:
+    S.Elbrus().handleElbrusNoSemiSpecLdAttr(D, AL);
     break;
   case ParsedAttr::AT_AVRSignal:
     S.AVR().handleSignalAttr(D, AL);

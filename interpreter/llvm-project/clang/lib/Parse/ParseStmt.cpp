@@ -398,6 +398,26 @@ Retry:
     HandlePragmaRedefineExtname();
     return StmtEmpty();
 
+  case tok::annot_pragma_asm_inline: {
+    ProhibitAttributes(CXX11Attrs);
+    ProhibitAttributes(GNUAttrs);
+    bool msAsm = false;
+    Res = HandlePragmaAsmInline(msAsm, true);
+    if (msAsm) return Res;
+    SemiError = "asm";
+    break;
+  }
+
+  case tok::annot_pragma_no_asm_inline: {
+    ProhibitAttributes(CXX11Attrs);
+    ProhibitAttributes(GNUAttrs);
+    bool msAsm = false;
+    Res = HandlePragmaAsmInline(msAsm, false);
+    if (msAsm) return Res;
+    SemiError = "asm";
+    break;
+  }
+
   case tok::annot_pragma_fp_contract:
     ProhibitAttributes(CXX11Attrs);
     ProhibitAttributes(GNUAttrs);

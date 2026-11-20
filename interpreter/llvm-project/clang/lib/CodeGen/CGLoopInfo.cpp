@@ -428,6 +428,20 @@ SmallVector<Metadata *, 4> LoopInfo::createMetadata(
         Ctx, {MDString::get(Ctx, "llvm.loop.parallel_accesses"), AccGroup}));
   }
 
+  if (Attrs.LoopCount > 0) {
+    Metadata *Vals[] = {MDString::get(Ctx, "llvm.loop.loop.count"),
+                        ConstantAsMetadata::get(ConstantInt::get(
+                            llvm::Type::getInt32Ty(Ctx), Attrs.LoopCount))};
+    LoopProperties.push_back(MDNode::get(Ctx, Vals));
+  }
+
+  if (Attrs.Ivdep > 0) {
+    Metadata *Vals[] = {MDString::get(Ctx, "llvm.loop.ivdep"),
+                        ConstantAsMetadata::get(ConstantInt::get(
+                            llvm::Type::getInt1Ty(Ctx), 1))};
+    LoopProperties.push_back(MDNode::get(Ctx, Vals));
+  }
+
   // Setting clang::code_align attribute.
   if (Attrs.CodeAlign > 0) {
     Metadata *Vals[] = {MDString::get(Ctx, "llvm.loop.align"),
@@ -447,6 +461,7 @@ LoopAttributes::LoopAttributes(bool IsParallel)
       VectorizePredicateEnable(LoopAttributes::Unspecified), VectorizeWidth(0),
       VectorizeScalable(LoopAttributes::Unspecified), InterleaveCount(0),
       UnrollCount(0), UnrollAndJamCount(0),
+      LoopCount(0), Ivdep(false),
       DistributeEnable(LoopAttributes::Unspecified), PipelineDisabled(false),
       PipelineInitiationInterval(0), CodeAlign(0), MustProgress(false) {}
 
@@ -457,6 +472,8 @@ void LoopAttributes::clear() {
   InterleaveCount = 0;
   UnrollCount = 0;
   UnrollAndJamCount = 0;
+  LoopCount = 0;
+  Ivdep = false;
   VectorizeEnable = LoopAttributes::Unspecified;
   UnrollEnable = LoopAttributes::Unspecified;
   UnrollAndJamEnable = LoopAttributes::Unspecified;
@@ -484,6 +501,7 @@ LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs,
       Attrs.VectorizeScalable == LoopAttributes::Unspecified &&
       Attrs.InterleaveCount == 0 && Attrs.UnrollCount == 0 &&
       Attrs.UnrollAndJamCount == 0 && !Attrs.PipelineDisabled &&
+      Attrs.LoopCount == 0 && !Attrs.Ivdep &&
       Attrs.PipelineInitiationInterval == 0 &&
       Attrs.VectorizePredicateEnable == LoopAttributes::Unspecified &&
       Attrs.VectorizeEnable == LoopAttributes::Unspecified &&
@@ -539,6 +557,8 @@ void LoopInfo::finish() {
 
     AfterJam.VectorizePredicateEnable = Attrs.VectorizePredicateEnable;
     AfterJam.UnrollCount = Attrs.UnrollCount;
+    AfterJam.LoopCount = Attrs.LoopCount;
+    AfterJam.Ivdep = Attrs.Ivdep;
     AfterJam.PipelineDisabled = Attrs.PipelineDisabled;
     AfterJam.PipelineInitiationInterval = Attrs.PipelineInitiationInterval;
 
@@ -679,6 +699,8 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
         break;
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::LoopCount:
+      case LoopHintAttr::Ivdep:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::PipelineInitiationInterval:
@@ -704,8 +726,12 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::Distribute:
         setDistributeState(true);
         break;
+      case LoopHintAttr::Ivdep:
+        setIvdep(true);
+        break;
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::LoopCount:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::PipelineDisabled:
@@ -727,6 +753,8 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::VectorizePredicate:
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::LoopCount:
+      case LoopHintAttr::Ivdep:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::Distribute:
@@ -748,6 +776,8 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::Interleave:
       case LoopHintAttr::UnrollCount:
       case LoopHintAttr::UnrollAndJamCount:
+      case LoopHintAttr::LoopCount:
+      case LoopHintAttr::Ivdep:
       case LoopHintAttr::VectorizeWidth:
       case LoopHintAttr::InterleaveCount:
       case LoopHintAttr::Distribute:
@@ -784,6 +814,9 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::UnrollAndJamCount:
         setUnrollAndJamCount(ValueInt);
         break;
+      case LoopHintAttr::LoopCount:
+        setLoopCount(ValueInt);
+        break;
       case LoopHintAttr::PipelineInitiationInterval:
         setPipelineInitiationInterval(ValueInt);
         break;
@@ -795,6 +828,7 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
       case LoopHintAttr::Interleave:
       case LoopHintAttr::Distribute:
       case LoopHintAttr::PipelineDisabled:
+      case LoopHintAttr::Ivdep:
         llvm_unreachable("Options cannot be assigned a value.");
         break;
       }

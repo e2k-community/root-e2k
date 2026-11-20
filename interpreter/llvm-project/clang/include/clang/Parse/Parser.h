@@ -7022,6 +7022,8 @@ public:
   ///@{
 
 private:
+  std::unique_ptr<PragmaHandler> AsmInlineHandler;
+  std::unique_ptr<PragmaHandler> NoAsmInlineHandler;
   std::unique_ptr<PragmaHandler> AlignHandler;
   std::unique_ptr<PragmaHandler> GCCVisibilityHandler;
   std::unique_ptr<PragmaHandler> OptionsHandler;
@@ -7061,6 +7063,8 @@ private:
   std::unique_ptr<PragmaHandler> NoUnrollHintHandler;
   std::unique_ptr<PragmaHandler> UnrollAndJamHintHandler;
   std::unique_ptr<PragmaHandler> NoUnrollAndJamHintHandler;
+  std::unique_ptr<PragmaHandler> LccLoopCountHintHandler;
+  std::unique_ptr<PragmaHandler> LccIvdepHintHandler;
   std::unique_ptr<PragmaHandler> FPHandler;
   std::unique_ptr<PragmaHandler> STDCFenvAccessHandler;
   std::unique_ptr<PragmaHandler> STDCFenvRoundHandler;
@@ -7148,6 +7152,10 @@ private:
   /// #pragma redefine_extname...
   void HandlePragmaRedefineExtname();
 
+  /// Handle the annotation token produced for
+  /// #pragma asm_inline...
+  StmtResult HandlePragmaAsmInline( bool &msAsm, bool isinline = false);
+  
   /// Handle the annotation token produced for
   /// #pragma STDC FP_CONTRACT...
   void HandlePragmaFPContract();

@@ -2863,6 +2863,10 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
 
   // Assemble the final asm string.
   std::string AsmString = S.generateAsmString(getContext());
+  llvm::Triple tpl = getTarget().getTriple();
+  bool is_e2k = tpl.isArchElbrus();
+
+  is_e2k = false;
 
   // Get all the output and input constraints together.
   SmallVector<TargetInfo::ConstraintInfo, 4> OutputConstraintInfos;
@@ -2962,7 +2966,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
     QualType QTy = OutExpr->getType();
     const bool IsScalarOrAggregate = hasScalarEvaluationKind(QTy) ||
                                      hasAggregateEvaluationKind(QTy);
-    if (!Info.allowsMemory() && IsScalarOrAggregate) {
+    if (!is_e2k && !Info.allowsMemory() && IsScalarOrAggregate) {
 
       Constraints += "=" + OutputConstraint;
       ResultRegQualTys.push_back(QTy);
@@ -3040,7 +3044,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
       ReadOnly = ReadNone = false;
     }
 
-    if (Info.isReadWrite()) {
+    if (!is_e2k && Info.isReadWrite()) {
       InOutConstraints += ',';
 
       const Expr *InputExpr = S.getOutputExpr(i);
@@ -3261,7 +3265,8 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
 
   llvm::InlineAsm *IA = llvm::InlineAsm::get(
       FTy, AsmString, Constraints, HasSideEffect,
-      /* IsAlignStack */ false, AsmDialect, HasUnwindClobber);
+      /* IsAlignStack */ false, AsmDialect, HasUnwindClobber,
+      S.isAsmInline());
   std::vector<llvm::Value*> RegResults;
   llvm::CallBrInst *CBR;
   llvm::DenseMap<llvm::BasicBlock *, SmallVector<llvm::Value *, 4>>

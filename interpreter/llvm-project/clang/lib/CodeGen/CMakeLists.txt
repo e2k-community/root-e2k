@@ -129,6 +129,7 @@ add_clang_library(clangCodeGen
   TargetBuiltins/SystemZ.cpp
   TargetBuiltins/WebAssembly.cpp
   TargetBuiltins/X86.cpp
+  TargetBuiltins/Elbrus.cpp
   TargetInfo.cpp
   Targets/AArch64.cpp
   Targets/AMDGPU.cpp
@@ -137,6 +138,7 @@ add_clang_library(clangCodeGen
   Targets/AVR.cpp
   Targets/BPF.cpp
   Targets/CSKY.cpp
+  Targets/Elbrus.cpp
   Targets/DirectX.cpp
   Targets/Hexagon.cpp
   Targets/Lanai.cpp

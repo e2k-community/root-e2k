@@ -9,6 +9,7 @@
 #include "clang/Driver/ToolChain.h"
 #include "ToolChains/Arch/AArch64.h"
 #include "ToolChains/Arch/ARM.h"
+#include "ToolChains/Arch/Elbrus.h"
 #include "ToolChains/Arch/RISCV.h"
 #include "ToolChains/Clang.h"
 #include "ToolChains/Flang.h"
@@ -39,6 +40,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/Path.h"
+#include "llvm/CodeGen/Lccrt.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/VersionTuple.h"
 #include "llvm/Support/VirtualFileSystem.h"
@@ -1104,6 +1106,10 @@ std::string ToolChain::GetLinkerPath(bool *LinkerIsLLD) const {
   if (LinkerIsLLD)
     *LinkerIsLLD = false;
 
+  if (Triple.isArchElbrus()) {
+    return llvm::Lccrt::getToolchain( Triple, "ld");
+  }
+
   // Get -fuse-ld= first to prevent -Wunused-command-line-argument. -fuse-ld= is
   // considered as the linker flavor, e.g. "bfd", "gold", or "lld".
   const Arg* A = Args.getLastArg(options::OPT_fuse_ld_EQ);
@@ -1240,6 +1246,11 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
   default:
     return getTripleString();
 
+  case llvm::Triple::e2k64: {
+    llvm::Triple Triple = getTriple();
+    tools::elbrus::setArchNameInTriple(Args, Triple);
+    return Triple.getTriple();
+  }
   case llvm::Triple::x86_64: {
     llvm::Triple Triple = getTriple();
     if (!Triple.isOSBinFormatMachO())

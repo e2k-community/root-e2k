@@ -669,6 +669,8 @@ bool Parser::parseGNUAsmQualifierListOpt(GNUAsmQualifiers &AQ) {
 }
 
 StmtResult Parser::ParseAsmStatement(bool &msAsm) {
+  StmtResult Res;
+  AsmStmt *ResAsm = 0;
   assert(Tok.is(tok::kw_asm) && "Not an asm stmt");
   SourceLocation AsmLoc = ConsumeToken();
 
@@ -712,10 +714,13 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   if (Tok.is(tok::r_paren)) {
     // We have a simple asm expression like 'asm("foo")'.
     T.consumeClose();
-    return Actions.ActOnGCCAsmStmt(
+    Res = Actions.ActOnGCCAsmStmt(
         AsmLoc, /*isSimple*/ true, GAQ.isVolatile(),
         /*NumOutputs*/ 0, /*NumInputs*/ 0, nullptr, Constraints, Exprs,
         AsmString.get(), Clobbers, /*NumLabels*/ 0, T.getCloseLocation());
+    ResAsm = dyn_cast_or_null<AsmStmt>( Res.get());
+    if ( ResAsm && getLangOpts().AsmInline ) ResAsm->setAsmInline( true);
+    return Res;
   }
 
   // Parse Outputs, if present.
@@ -812,10 +817,13 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
     return StmtError();
   }
   T.consumeClose();
-  return Actions.ActOnGCCAsmStmt(AsmLoc, false, GAQ.isVolatile(), NumOutputs,
+  Res = Actions.ActOnGCCAsmStmt(AsmLoc, false, GAQ.isVolatile(), NumOutputs,
                                  NumInputs, Names.data(), Constraints, Exprs,
                                  AsmString.get(), Clobbers, NumLabels,
                                  T.getCloseLocation());
+  ResAsm = dyn_cast_or_null<AsmStmt>( Res.get());
+  if ( ResAsm && getLangOpts().AsmInline ) ResAsm->setAsmInline( true);
+  return Res;
 }
 
 bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,

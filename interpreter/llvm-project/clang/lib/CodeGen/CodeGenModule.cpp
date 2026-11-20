@@ -117,6 +117,10 @@ createTargetCodeGenInfo(CodeGenModule &CGM) {
   default:
     return createDefaultTargetCodeGenInfo(CGM);
 
+  case llvm::Triple::e2k32:
+  case llvm::Triple::e2k64:
+  case llvm::Triple::e2k128:
+    return createElbrusTargetCodeGenInfo(CGM);
   case llvm::Triple::m68k:
     return createM68kTargetCodeGenInfo(CGM);
   case llvm::Triple::mips:

@@ -81,7 +81,8 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
   StringRef PragmaName =
       llvm::StringSwitch<StringRef>(
           PragmaNameLoc->getIdentifierInfo()->getName())
-          .Cases({"unroll", "nounroll", "unroll_and_jam", "nounroll_and_jam"},
+          .Cases({"unroll", "nounroll", "unroll_and_jam", "nounroll_and_jam",
+                  "count", "ivdep"},
                  PragmaNameLoc->getIdentifierInfo()->getName())
           .Default("clang loop");
 
@@ -126,6 +127,10 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
       SetHints(LoopHintAttr::UnrollAndJamCount, LoopHintAttr::Numeric);
     else
       SetHints(LoopHintAttr::UnrollAndJam, LoopHintAttr::Enable);
+  } else if (PragmaName == "count") {
+    SetHints(LoopHintAttr::LoopCount, LoopHintAttr::Numeric);
+  } else if (PragmaName == "ivdep") {
+    SetHints(LoopHintAttr::Ivdep, LoopHintAttr::Enable);
   } else {
     // #pragma clang loop ...
     assert(OptionLoc && OptionLoc->getIdentifierInfo() &&
@@ -139,6 +144,8 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
                  .Case("interleave_count", LoopHintAttr::InterleaveCount)
                  .Case("unroll", LoopHintAttr::Unroll)
                  .Case("unroll_count", LoopHintAttr::UnrollCount)
+                 .Case("count", LoopHintAttr::LoopCount)
+                 .Case("ivdep", LoopHintAttr::Ivdep)
                  .Case("pipeline", LoopHintAttr::PipelineDisabled)
                  .Case("pipeline_initiation_interval",
                        LoopHintAttr::PipelineInitiationInterval)
@@ -157,6 +164,7 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
         State = LoopHintAttr::FixedWidth;
     } else if (Option == LoopHintAttr::InterleaveCount ||
                Option == LoopHintAttr::UnrollCount ||
+               Option == LoopHintAttr::LoopCount ||
                Option == LoopHintAttr::PipelineInitiationInterval) {
       assert(ValueExpr && "Attribute must have a valid value expression.");
       if (S.CheckLoopHintExpr(ValueExpr, St->getBeginLoc(),
@@ -474,6 +482,10 @@ CheckForIncompatibleAttributes(Sema &S,
     // The vector predication only has a state form that is exposed by
     // #pragma clang loop vectorize_predicate (enable | disable).
     VectorizePredicate,
+    // #pragma loop count
+    Count,
+    // #pragma ivdep
+    Ivdep,
     // This serves as a indicator to how many category are listed in this enum.
     NumberOfCategories
   };
@@ -520,6 +532,12 @@ CheckForIncompatibleAttributes(Sema &S,
       break;
     case LoopHintAttr::VectorizePredicate:
       Category = VectorizePredicate;
+      break;
+    case LoopHintAttr::LoopCount:
+      Category = Count;
+      break;
+    case LoopHintAttr::Ivdep:
+      Category = Ivdep;
       break;
     };
 

@@ -158,6 +158,7 @@ class OverloadCandidateSet;
 class Preprocessor;
 class SemaAMDGPU;
 class SemaARM;
+class SemaElbrus;
 class SemaAVR;
 class SemaBPF;
 class SemaCodeCompletion;
@@ -1425,6 +1426,11 @@ public:
     return *ARMPtr;
   }
 
+  SemaElbrus &Elbrus() {
+    assert(ElbrusPtr);
+    return *ElbrusPtr;
+  }
+
   SemaAVR &AVR() {
     assert(AVRPtr);
     return *AVRPtr;
@@ -1585,6 +1591,7 @@ private:
 
   std::unique_ptr<SemaAMDGPU> AMDGPUPtr;
   std::unique_ptr<SemaARM> ARMPtr;
+  std::unique_ptr<SemaElbrus> ElbrusPtr;
   std::unique_ptr<SemaAVR> AVRPtr;
   std::unique_ptr<SemaBPF> BPFPtr;
   std::unique_ptr<SemaCodeCompletion> CodeCompletionPtr;
@@ -2346,6 +2353,9 @@ public:
 
   /// FreeVisContext - Deallocate and null out VisContext.
   void FreeVisContext();
+
+  /// ActOnPragmaAsmInline - Called on well-formed '\#pragma asm_inline'.
+  void ActOnPragmaAsmInline(const Token &Identifier, SourceLocation PragmaLoc);
 
   /// ActOnPragmaVisibility - Called on well formed \#pragma GCC visibility... .
   void ActOnPragmaVisibility(const IdentifierInfo *VisType,

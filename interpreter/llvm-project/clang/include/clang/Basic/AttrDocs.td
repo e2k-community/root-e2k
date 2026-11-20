@@ -3063,6 +3063,18 @@ does not insert a SEI instruction.
   }];
 }
 
+def ElbrusCheckStackDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+Clang supports the GNU style ``__attribute__((check_stack))`` attribute on
+Elbrus targets. This attribute may be attached to a function definition and instructs
+the backend to generate appropriate function entry/exit code so that it can be used
+directly as an interrupt service routine.
+
+Interrupt handler functions defined with the signal attribute do not re-enable interrupts.
+}];
+}
+
 def AVRSignalDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{

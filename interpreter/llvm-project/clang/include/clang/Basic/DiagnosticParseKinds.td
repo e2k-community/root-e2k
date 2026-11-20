@@ -1336,6 +1336,9 @@ def warn_pragma_init_seg_unsupported_target : Warning<
 def err_pragma_file_or_compound_scope : Error<
   "'#pragma %0' can only appear at file scope or at the start of a "
   "compound statement">;
+// - #pragma restricted to file scope or start of compound statement
+def err_pragma_asm_call_position : Error<
+  "'#pragma %0' can only appear before asm inline call">;
 // - #pragma stdc unknown
 def ext_stdc_pragma_ignored : ExtWarn<"unknown pragma in STDC namespace">,
    InGroup<UnknownPragmas>;
@@ -1733,6 +1736,9 @@ def err_pragma_loop_invalid_vectorize_option : Error<
 def note_pragma_loop_invalid_vectorize_option : Note<
   "vectorize_width loop hint malformed; use vectorize_width(X, fixed) or "
   "vectorize_width(X, scalable) where X is an integer, or vectorize_width('fixed' or 'scalable')">;
+
+def err_pragma_loop_count_expected_hint_value : Error<
+  "expected hint_value for pragma loop count">;
 
 def err_pragma_fp_invalid_option : Error<
   "%select{invalid|missing}0 option%select{ %1|}0; expected 'contract', 'reassociate', 'reciprocal', or 'exceptions'">;

@@ -4890,6 +4890,7 @@ public:
   llvm::Value *EmitBPFBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
 
   llvm::Value *BuildVector(ArrayRef<llvm::Value *> Ops);
+  llvm::Value *EmitElbrusBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitX86BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitPPCBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitAMDGPUBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
@@ -5569,6 +5570,8 @@ private:
   void AddObjCARCExceptionMetadata(llvm::Instruction *Inst);
 
   llvm::Value *GetValueForARMHint(unsigned BuiltinID);
+  llvm::Value *EmitElbrusCpuInit(const CallExpr *E);
+  llvm::Value *EmitElbrusCpuIs(const CallExpr *E);
   llvm::Value *EmitX86CpuIs(const CallExpr *E);
   llvm::Value *EmitX86CpuIs(StringRef CPUStr);
   llvm::Value *EmitX86CpuSupports(const CallExpr *E);

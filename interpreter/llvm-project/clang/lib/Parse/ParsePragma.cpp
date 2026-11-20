@@ -31,6 +31,26 @@ using namespace clang;
 
 namespace {
 
+struct PragmaAsmInlineHandler : public PragmaHandler {
+  explicit PragmaAsmInlineHandler(Sema &S)
+             : PragmaHandler("asm_inline"), Actions(S) {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+
+private:
+  Sema &Actions;
+};
+
+struct PragmaNoAsmInlineHandler : public PragmaHandler {
+  explicit PragmaNoAsmInlineHandler(Sema &S)
+             : PragmaHandler("no_asm_inline"), Actions(S) {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+
+private:
+  Sema &Actions;
+};
+
 struct PragmaAlignHandler : public PragmaHandler {
   explicit PragmaAlignHandler() : PragmaHandler("align") {}
   void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
@@ -296,6 +316,18 @@ struct PragmaUnrollHintHandler : public PragmaHandler {
                     Token &FirstToken) override;
 };
 
+struct PragmaLccLoopHintHandler : public PragmaHandler {
+  PragmaLccLoopHintHandler() : PragmaHandler("count") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+struct PragmaLccIvdepHintHandler : public PragmaHandler {
+  PragmaLccIvdepHintHandler() : PragmaHandler("ivdep") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
 struct PragmaMSRuntimeChecksHandler : public EmptyPragmaHandler {
   PragmaMSRuntimeChecksHandler() : EmptyPragmaHandler("runtime_checks") {}
 };
@@ -412,6 +444,11 @@ void markAsReinjectedForRelexing(llvm::MutableArrayRef<clang::Token> Toks) {
 }  // end namespace
 
 void Parser::initializePragmaHandlers() {
+  AsmInlineHandler = std::make_unique<PragmaAsmInlineHandler>(Actions);
+  PP.AddPragmaHandler(AsmInlineHandler.get());
+  NoAsmInlineHandler = std::make_unique<PragmaNoAsmInlineHandler>(Actions);
+  PP.AddPragmaHandler(NoAsmInlineHandler.get());
+
   AlignHandler = std::make_unique<PragmaAlignHandler>();
   PP.AddPragmaHandler(AlignHandler.get());
 
@@ -545,6 +582,12 @@ void Parser::initializePragmaHandlers() {
       std::make_unique<PragmaUnrollHintHandler>("nounroll_and_jam");
   PP.AddPragmaHandler(NoUnrollAndJamHintHandler.get());
 
+  LccLoopCountHintHandler = std::make_unique<PragmaLccLoopHintHandler>();
+  PP.AddPragmaHandler("loop", LccLoopCountHintHandler.get());
+
+  LccIvdepHintHandler = std::make_unique<PragmaLccIvdepHintHandler>();
+  PP.AddPragmaHandler(LccIvdepHintHandler.get());
+
   FPHandler = std::make_unique<PragmaFPHandler>();
   PP.AddPragmaHandler("clang", FPHandler.get());
 
@@ -566,6 +609,10 @@ void Parser::initializePragmaHandlers() {
 
 void Parser::resetPragmaHandlers() {
   // Remove the pragma handlers we installed.
+  PP.RemovePragmaHandler(AsmInlineHandler.get());
+  AsmInlineHandler.reset();
+  PP.RemovePragmaHandler(NoAsmInlineHandler.get());
+  NoAsmInlineHandler.reset();
   PP.RemovePragmaHandler(AlignHandler.get());
   AlignHandler.reset();
   PP.RemovePragmaHandler("GCC", GCCVisibilityHandler.get());
@@ -679,6 +726,12 @@ void Parser::resetPragmaHandlers() {
 
   PP.RemovePragmaHandler(NoUnrollAndJamHintHandler.get());
   NoUnrollAndJamHintHandler.reset();
+
+  PP.RemovePragmaHandler("loop", LccLoopCountHintHandler.get());
+  LccLoopCountHintHandler.reset();
+
+  PP.RemovePragmaHandler(LccIvdepHintHandler.get());
+  LccIvdepHintHandler.reset();
 
   PP.RemovePragmaHandler("clang", FPHandler.get());
   FPHandler.reset();
@@ -818,6 +871,27 @@ void Parser::HandlePragmaRedefineExtname() {
   ConsumeToken();
   Actions.ActOnPragmaRedefineExtname(RedefName, AliasName, RedefLoc,
                                      RedefNameLoc, AliasNameLoc);
+}
+
+StmtResult Parser::HandlePragmaAsmInline( bool &msAsm, bool isinline) {
+  StmtResult r;
+
+  assert(Tok.is(tok::annot_pragma_asm_inline) || Tok.is(tok::annot_pragma_no_asm_inline));
+  ConsumeAnnotationToken();
+  if ( !Tok.is(tok::kw_asm) ) {
+      Diag(Tok, diag::err_pragma_asm_call_position) << "asm_inline";
+      r = StmtError();
+  } else {
+      AsmStmt *asmv = 0;
+
+      r = ParseAsmStatement( msAsm);
+      asmv = dyn_cast_or_null<AsmStmt>( r.get());
+      if ( asmv ) {
+          asmv->setAsmInline( isinline);
+      }
+  }
+
+  return r;
 }
 
 void Parser::HandlePragmaFPContract() {
@@ -1421,7 +1495,8 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
   // without an argument.
   auto IsLoopHint =
       llvm::StringSwitch<bool>(PragmaNameInfo->getName())
-          .Cases({"unroll", "nounroll", "unroll_and_jam", "nounroll_and_jam"},
+          .Cases({"unroll", "nounroll", "unroll_and_jam", "nounroll_and_jam",
+                  "ivdep"},
                  true)
           .Default(false);
 
@@ -2343,6 +2418,50 @@ void PragmaClangSectionHandler::HandlePragma(Preprocessor &PP,
                                          : PragmaClangSectionAction::Clear),
                                     SecKind, SecName);
   }
+}
+
+void PragmaAsmInlineHandler::HandlePragma(Preprocessor &PP,
+                                          PragmaIntroducer Introducer,
+                                          Token &AsmInlineTok) {
+  Token Tok;
+
+  PP.Lex(Tok);
+  if (Tok.isNot(tok::eod)) {
+    PP.Diag(AsmInlineTok.getLocation(), diag::warn_pragma_extra_tokens_at_eol) << "asm_inline";
+    return;
+  }
+
+  //Actions.ActOnPragmaAsmInline(AsmInlineTok, AsmInlineTok.getLocation());
+
+  // Generate the hint token.
+  auto TokenArray = std::make_unique<Token[]>(1);
+  TokenArray[0].startToken();
+  TokenArray[0].setKind(tok::annot_pragma_asm_inline);
+  TokenArray[0].setLocation(Introducer.Loc);
+  PP.EnterTokenStream(std::move(TokenArray), 1,
+                      /*DisableMacroExpansion=*/false, /*IsReinject=*/false);
+}
+
+void PragmaNoAsmInlineHandler::HandlePragma(Preprocessor &PP,
+                                            PragmaIntroducer Introducer,
+                                            Token &NoAsmInlineTok) {
+  Token Tok;
+
+  PP.Lex(Tok);
+  if (Tok.isNot(tok::eod)) {
+    PP.Diag(NoAsmInlineTok.getLocation(), diag::warn_pragma_extra_tokens_at_eol) << "no_asm_inline";
+    return;
+  }
+
+  //Actions.ActOnPragmaNoAsmInline(NoAsmInlineTok, NoAsmInlineTok.getLocation());
+
+  // Generate the hint token.
+  auto TokenArray = std::make_unique<Token[]>(1);
+  TokenArray[0].startToken();
+  TokenArray[0].setKind(tok::annot_pragma_no_asm_inline);
+  TokenArray[0].setLocation(Introducer.Loc);
+  PP.EnterTokenStream(std::move(TokenArray), 1,
+                      /*DisableMacroExpansion=*/false, /*IsReinject=*/false);
 }
 
 // #pragma 'align' '=' {'native','natural','mac68k','power','reset'}
@@ -3745,6 +3864,94 @@ void PragmaUnrollHintHandler::HandlePragma(Preprocessor &PP,
           << "unroll";
       return;
     }
+  }
+
+  // Generate the hint token.
+  auto TokenArray = std::make_unique<Token[]>(1);
+  TokenArray[0].startToken();
+  TokenArray[0].setKind(tok::annot_pragma_loop_hint);
+  TokenArray[0].setLocation(Introducer.Loc);
+  TokenArray[0].setAnnotationEndLoc(PragmaName.getLocation());
+  TokenArray[0].setAnnotationValue(static_cast<void *>(Info));
+  PP.EnterTokenStream(std::move(TokenArray), 1,
+                      /*DisableMacroExpansion=*/false, /*IsReinject=*/false);
+}
+
+/// Handle the loop count optimization pragmas.
+///  #pragma loop count count-hint-value
+///  #pragma loop count '(' count-hint-value ')'
+///
+///  count-hint-value:
+///    constant-expression
+///
+/// Loop count hints can be specified with '#pragma loop count'.
+/// '#pragma loop count' take a numeric argument optionally
+/// contained in parentheses. A positive integer argument must be
+/// specified to indicate the usually number of the loop iterations.
+void PragmaLccLoopHintHandler::HandlePragma(Preprocessor &PP,
+                                            PragmaIntroducer Introducer,
+                                            Token &Tok) {
+  // Incoming token is "count" for "#pragma loop count".
+  Token PragmaName = Tok;
+  PP.Lex(Tok);
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaLoopHintInfo;
+  if (Tok.is(tok::eod)) {
+    // loop count pragma without an argument.
+    PP.Diag(Tok.getLocation(), diag::err_pragma_loop_count_expected_hint_value)
+        << PragmaName.getIdentifierInfo()->getName();
+    return;
+  } else {
+    // Loop count pragma with an argument: "#pragma loop count N" or
+    // "#pragma loop count (N)".
+    // Read '(' if it exists.
+    bool ValueInParens = Tok.is(tok::l_paren);
+    if (ValueInParens)
+      PP.Lex(Tok);
+
+    Token Option;
+    Option.startToken();
+    if (ParseLoopHintValue(PP, Tok, PragmaName, Option, ValueInParens, *Info))
+      return;
+
+    if (Tok.isNot(tok::eod)) {
+      PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+          << "loop count";
+      return;
+    }
+  }
+
+  // Generate the hint token.
+  auto TokenArray = std::make_unique<Token[]>(1);
+  TokenArray[0].startToken();
+  TokenArray[0].setKind(tok::annot_pragma_loop_hint);
+  TokenArray[0].setLocation(Introducer.Loc);
+  TokenArray[0].setAnnotationEndLoc(PragmaName.getLocation());
+  TokenArray[0].setAnnotationValue(static_cast<void *>(Info));
+  PP.EnterTokenStream(std::move(TokenArray), 1,
+                      /*DisableMacroExpansion=*/false, /*IsReinject=*/false);
+}
+
+/// Handle the ivdep optimization pragmas.
+///  #pragma ivdep
+///
+///  count-hint-value:
+///    constant-expression
+///
+/// Ivdep hints can be specified with '#pragma ivdep'.
+void PragmaLccIvdepHintHandler::HandlePragma(Preprocessor &PP,
+                                             PragmaIntroducer Introducer,
+                                             Token &Tok) {
+  // Incoming token is "ivdep" for "#pragma ivdep".
+  Token PragmaName = Tok;
+  PP.Lex(Tok);
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaLoopHintInfo;
+  if (Tok.is(tok::eod)) {
+    Info->PragmaName = PragmaName;
+    Info->Option.startToken();
+  } else {
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+        << "ivdep";
+    return;
   }
 
   // Generate the hint token.
