@@ -347,6 +347,40 @@ X86TargetMachine::createPostMachineScheduler(MachineSchedContext *C) const {
 // X86 TTI query.
 //===----------------------------------------------------------------------===//
 
+extern "C" void *X86_getTargetMachine();
+extern "C" void *X86_getTargetTransformInfo( const void *);
+
+void *X86_getTargetMachine() {
+    static void *TM = 0;
+
+    if ( !TM ) {
+        std::string Error;
+        std::string trg = "x86_64-unknown-linux-gnu";
+        const llvm::Triple Triple = llvm::Triple( trg);
+        const llvm::Target *TheTarget = TargetRegistry::lookupTarget( Triple, Error);
+        llvm::TargetOptions Options{};
+        llvm::CodeModel::Model CM = llvm::CodeModel::Model::Large;
+
+        TM = (void *)TheTarget->createTargetMachine( Triple, "", "", Options, llvm::Reloc::Static,
+                                                     CM, CodeGenOptLevel::Default);
+    }
+
+    return TM;
+}
+
+void *X86_getTargetTransformInfo( const void *vf) {
+    TargetTransformInfo *TTI = 0;
+
+    if ( !TTI ) {
+        const Function *pf = (const Function *)vf;
+        X86TargetMachine *tm = (X86TargetMachine *)X86_getTargetMachine();
+
+        TTI = new TargetTransformInfo( std::make_unique<X86TTIImpl>( tm, *pf));
+    }
+
+    return TTI;
+}
+
 TargetTransformInfo
 X86TargetMachine::getTargetTransformInfo(const Function &F) const {
   return TargetTransformInfo(std::make_unique<X86TTIImpl>(this, F));

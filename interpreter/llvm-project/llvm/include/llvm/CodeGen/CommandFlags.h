@@ -58,6 +58,14 @@ LLVM_ABI CodeGenFileType getFileType();
 
 LLVM_ABI FramePointerKind getFramePointerUsage();
 
+LLVM_ABI bool getEnableCodegenLccrt();
+LLVM_ABI std::string getLccrtBackendOptions();
+LLVM_ABI bool getEnableLccrtIpa();
+LLVM_ABI bool getEnableLccrtAsmtest();
+LLVM_ABI bool getEnableLccrtJit();
+LLVM_ABI bool getEnableLccrtBackendDebug();
+LLVM_ABI bool getEnableAligned();
+
 LLVM_ABI bool getEnableNoInfsFPMath();
 
 LLVM_ABI bool getEnableNoNaNsFPMath();

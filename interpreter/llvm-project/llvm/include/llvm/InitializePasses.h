@@ -347,6 +347,8 @@ LLVM_ABI void initializeWindowsSecureHotPatchingPass(PassRegistry &);
 LLVM_ABI void initializeWinEHPreparePass(PassRegistry &);
 LLVM_ABI void initializeWriteBitcodePassPass(PassRegistry &);
 LLVM_ABI void initializeXRayInstrumentationLegacyPass(PassRegistry &);
+LLVM_ABI void initializeLccrtIpaPassPass(PassRegistry &);
+LLVM_ABI void initializeLccrtPassPass(PassRegistry &);
 
 } // end namespace llvm
 

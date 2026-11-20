@@ -158,6 +158,8 @@ void TargetMachine::resetTargetOptions(const Function &F) const {
     Options.X = F.getFnAttribute(Y).getValueAsBool();     \
   } while (0)
 
+  RESET_OPTION(Aligned, "aligned");
+
   RESET_OPTION(NoInfsFPMath, "no-infs-fp-math");
   RESET_OPTION(NoNaNsFPMath, "no-nans-fp-math");
   RESET_OPTION(NoSignedZerosFPMath, "no-signed-zeros-fp-math");

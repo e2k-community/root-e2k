@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/CodeGenTargetMachineImpl.h"
+#include "llvm/CodeGen/Lccrt.h"
+#include "llvm/CodeGen/LccrtIpaPass.h"
 #include "llvm/Analysis/RuntimeLibcallInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/AsmPrinter.h"
@@ -49,8 +51,10 @@ static cl::opt<bool> EnableNoTrapAfterNoreturn(
 void CodeGenTargetMachineImpl::initAsmInfo() {
   MRI.reset(TheTarget.createMCRegInfo(getTargetTriple()));
   assert(MRI && "Unable to create reg info");
-  MII.reset(TheTarget.createMCInstrInfo());
-  assert(MII && "Unable to create instruction info");
+  if (!isCodeGenLccrt()) {
+    MII.reset(TheTarget.createMCInstrInfo());
+    assert(MII && "Unable to create instruction info");
+  }
   // FIXME: Having an MCSubtargetInfo on the target machine is a hack due
   // to some backends having subtarget feature dependent module level
   // code generation. This is similar to the hack in the AsmPrinter for
@@ -137,7 +141,9 @@ addPassesToGenerateCode(CodeGenTargetMachineImpl &TM, PassManagerBase &PM,
 
   if (PassConfig->addISelPasses())
     return nullptr;
-  PassConfig->addMachinePasses();
+  if ( !TM.isCodeGenLccrt() ) {
+    PassConfig->addMachinePasses();
+  }
   PassConfig->setInitialized();
   return PassConfig;
 }
@@ -155,12 +161,19 @@ bool CodeGenTargetMachineImpl::addAsmPrinter(PassManagerBase &PM,
   }
 
   // Create the AsmPrinter, which takes ownership of AsmStreamer if successful.
-  FunctionPass *Printer =
-      getTarget().createAsmPrinter(*this, std::move(*MCStreamerOrErr));
-  if (!Printer)
-    return true;
+  if ( !isCodeGenLccrt() ) { 
+    FunctionPass *Printer =
+        getTarget().createAsmPrinter(*this, std::move(*MCStreamerOrErr));
+    if (!Printer)
+      return true;
 
-  PM.add(Printer);
+    PM.add(Printer);
+  } else {
+    if ( isLccrtIpa() )
+      PM.add( Lccrt::createLccrtIpaPass());
+    PM.add( Lccrt::createAsmPass( *this, Out, FileType));
+  }
+
   return false;
 }
 
@@ -203,22 +216,26 @@ CodeGenTargetMachineImpl::createMCStreamer(raw_pwrite_stream &Out,
   case CodeGenFileType::ObjectFile: {
     // Create the code emitter for the target if it exists.  If not, .o file
     // emission fails.
-    MCCodeEmitter *MCE = getTarget().createMCCodeEmitter(MII, Context);
-    if (!MCE)
-      return make_error<StringError>("createMCCodeEmitter failed",
-                                     inconvertibleErrorCode());
-    MCAsmBackend *MAB =
-        getTarget().createMCAsmBackend(STI, MRI, Options.MCOptions);
-    if (!MAB)
-      return make_error<StringError>("createMCAsmBackend failed",
-                                     inconvertibleErrorCode());
+    if ( !isCodeGenLccrt() ) {
+      MCCodeEmitter *MCE = getTarget().createMCCodeEmitter(MII, Context);
+      if (!MCE)
+        return make_error<StringError>("createMCCodeEmitter failed",
+                                       inconvertibleErrorCode());
+      MCAsmBackend *MAB =
+          getTarget().createMCAsmBackend(STI, MRI, Options.MCOptions);
+      if (!MAB)
+        return make_error<StringError>("createMCAsmBackend failed",
+                                       inconvertibleErrorCode());
 
-    Triple T(getTargetTriple());
-    AsmStreamer.reset(getTarget().createMCObjectStreamer(
-        T, Context, std::unique_ptr<MCAsmBackend>(MAB),
-        DwoOut ? MAB->createDwoObjectWriter(Out, *DwoOut)
-               : MAB->createObjectWriter(Out),
-        std::unique_ptr<MCCodeEmitter>(MCE), STI));
+      Triple T(getTargetTriple());
+      AsmStreamer.reset(getTarget().createMCObjectStreamer(
+          T, Context, std::unique_ptr<MCAsmBackend>(MAB),
+          DwoOut ? MAB->createDwoObjectWriter(Out, *DwoOut)
+                 : MAB->createObjectWriter(Out),
+          std::unique_ptr<MCCodeEmitter>(MCE), STI));
+    } else {
+      AsmStreamer.reset( 0);
+    }
     break;
   }
   case CodeGenFileType::Null:
@@ -281,29 +298,34 @@ bool CodeGenTargetMachineImpl::addPassesToEmitMC(PassManagerBase &PM,
 
   // Create the code emitter for the target if it exists.  If not, .o file
   // emission fails.
-  const MCSubtargetInfo &STI = *getMCSubtargetInfo();
-  const MCRegisterInfo &MRI = *getMCRegisterInfo();
-  std::unique_ptr<MCCodeEmitter> MCE(
-      getTarget().createMCCodeEmitter(*getMCInstrInfo(), *Ctx));
-  if (!MCE)
-    return true;
-  MCAsmBackend *MAB =
-      getTarget().createMCAsmBackend(STI, MRI, Options.MCOptions);
-  if (!MAB)
-    return true;
+  if ( !isCodeGenLccrt() ) {
+    const MCSubtargetInfo &STI = *getMCSubtargetInfo();
+    const MCRegisterInfo &MRI = *getMCRegisterInfo();
+    std::unique_ptr<MCCodeEmitter> MCE(
+        getTarget().createMCCodeEmitter(*getMCInstrInfo(), *Ctx));
+    if (!MCE)
+      return true;
+    MCAsmBackend *MAB =
+        getTarget().createMCAsmBackend(STI, MRI, Options.MCOptions);
+    if (!MAB)
+      return true;
 
-  const Triple &T = getTargetTriple();
-  std::unique_ptr<MCStreamer> AsmStreamer(getTarget().createMCObjectStreamer(
-      T, *Ctx, std::unique_ptr<MCAsmBackend>(MAB), MAB->createObjectWriter(Out),
-      std::move(MCE), STI));
+    const Triple &T = getTargetTriple();
+    std::unique_ptr<MCStreamer> AsmStreamer(getTarget().createMCObjectStreamer(
+        T, *Ctx, std::unique_ptr<MCAsmBackend>(MAB), MAB->createObjectWriter(Out),
+        std::move(MCE), STI));
 
-  // Create the AsmPrinter, which takes ownership of AsmStreamer if successful.
-  FunctionPass *Printer =
-      getTarget().createAsmPrinter(*this, std::move(AsmStreamer));
-  if (!Printer)
-    return true;
+    // Create the AsmPrinter, which takes ownership of AsmStreamer if successful.
+    FunctionPass *Printer =
+        getTarget().createAsmPrinter(*this, std::move(AsmStreamer));
+    if (!Printer)
+      return true;
 
-  PM.add(Printer);
+    PM.add(Printer);
+  } else {
+    PM.add( Lccrt::createAsmPass( *this, Out, CodeGenFileType::ObjectFile));
+  }
+
   PM.add(createFreeMachineFunctionPass());
 
   return false; // success!

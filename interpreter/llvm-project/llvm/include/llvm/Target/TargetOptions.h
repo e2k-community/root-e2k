@@ -119,7 +119,11 @@ enum CodeObjectVersionKind {
 class TargetOptions {
 public:
   TargetOptions()
-      : NoInfsFPMath(false), NoNaNsFPMath(false), NoTrappingFPMath(true),
+      : CodegenLccrt(false), LccrtIpa(false), LccrtAsmtest(false),
+        LccrtJit(false), LccrtCallLong(false), LccrtBackendDebug(false),
+        LccrtBackendOptions(""), LccrtLlvmIREmbedStaticOnly(false),
+        Aligned(false), NoInfsFPMath(false), NoNaNsFPMath(false),
+        NoTrappingFPMath(true),
         NoSignedZerosFPMath(false), EnableAIXExtendedAltivecABI(false),
         HonorSignDependentRoundingFPMathOption(false), NoZerosInBSS(false),
         GuaranteedTailCallOpt(false), StackSymbolOrdering(true),
@@ -141,6 +145,36 @@ public:
         PPCGenScalarMASSEntries(false), JMCInstrument(false),
         EnableCFIFixup(false), MisExpect(false), XCOFFReadOnlyPointers(false),
         VerifyArgABICompliance(true) {}
+
+    /// CodegenLccrt - Use lccrt-backend for code generating.
+    unsigned CodegenLccrt : 1;
+
+    /// LccrtIpa - Use ipa-results in lccrt-backend.
+    unsigned LccrtIpa : 1;
+
+    /// LccrtAsmtest - Use asmtest asm-plugin in lccrt-backend.
+    unsigned LccrtAsmtest : 1;
+
+    /// LccrtJit - Use jit-mode in lccrt-backend.
+    unsigned LccrtJit : 1;
+
+    /// LccrtCallLong - Use only long calls.
+    unsigned LccrtCallLong : 1;
+
+    /// LccrtBackendDebug - Use lccrt-backend debug version.
+    unsigned LccrtBackendDebug : 1;
+
+    /// LccrtBackendOptions - lccrt-backend options.
+    std::string LccrtBackendOptions;
+
+    /// LccrtLlvmIREmbedStaticOnly - embed llvm-ir only in static libs.
+    bool LccrtLlvmIREmbedStaticOnly;
+
+    /// Aligned - This flag is enabled when the
+    /// -enable-aligned is specified on the command line. This
+    /// specifies that optimizations are allowed to assume that load/store
+    /// adresses to be aligned by memory access size.
+    unsigned Aligned : 1;
 
   /// DisableFramePointerElim - This returns true if frame pointer elimination
   /// optimization should be disabled for the given machine function.

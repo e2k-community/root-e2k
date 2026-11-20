@@ -851,7 +851,7 @@ void TargetPassConfig::addIRPasses() {
     addPass(createBasicAAWrapperPass());
 
     // Run loop strength reduction before anything else.
-    if (!DisableLSR) {
+    if (!DisableLSR && !TM->isCodeGenLccrt()) {
       addPass(createCanonicalizeFreezeInLoopsPass());
       addPass(createLoopStrengthReducePass());
       if (EnableLoopTermFold)
@@ -1092,11 +1092,15 @@ bool TargetPassConfig::addISelPasses() {
   addPass(createPreISelIntrinsicLoweringPass());
   addPass(createExpandIRInstsPass(getOptLevel()));
   addIRPasses();
-  addCodeGenPrepare();
-  addPassesToHandleExceptions();
-  addISelPrepare();
+  if ( !TM->isCodeGenLccrt() ) {
+    addCodeGenPrepare();
+    addPassesToHandleExceptions();
+    addISelPrepare();
 
-  return addCoreISelPasses();
+    return addCoreISelPasses();
+  } else {
+    return (false);
+  }
 }
 
 /// -regalloc=... command line option.
