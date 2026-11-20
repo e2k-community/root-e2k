@@ -83,7 +83,9 @@ protected:
 
 public:
   virtual void anchor();
-  virtual ~DynamicRecursiveASTVisitorBase() = default;
+  // Defined out of line: lcc (EDG) does not emit an in-class defaulted
+  // virtual destructor for the explicit instantiations in the .cpp file.
+  virtual ~DynamicRecursiveASTVisitorBase();
 
   /// Recursively visits an entire AST, starting from the TranslationUnitDecl.
   /// \returns false if visitation was terminated early.

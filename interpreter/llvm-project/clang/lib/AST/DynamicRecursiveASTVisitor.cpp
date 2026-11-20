@@ -273,6 +273,9 @@ template <bool Const> struct Impl : RecursiveASTVisitor<Impl<Const>> {
 } // namespace
 
 template <bool Const> void DynamicRecursiveASTVisitorBase<Const>::anchor() {}
+template <bool Const>
+DynamicRecursiveASTVisitorBase<Const>::~DynamicRecursiveASTVisitorBase() =
+    default;
 
 // Helper macros to forward a call to the base implementation since that
 // ends up getting very verbose otherwise.
