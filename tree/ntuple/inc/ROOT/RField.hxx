@@ -434,7 +434,7 @@ protected:
 public:
    RSimpleField(RSimpleField &&other) = default;
    RSimpleField &operator=(RSimpleField &&other) = default;
-   ~RSimpleField() override = default;
+   ~RSimpleField() override;
 
    T *Map(ROOT::NTupleSize_t globalIndex) { return fPrincipalColumn->Map<T>(globalIndex); }
    T *Map(RNTupleLocalIndex localIndex) { return fPrincipalColumn->Map<T>(localIndex); }
@@ -450,6 +450,11 @@ public:
    size_t GetValueSize() const final { return sizeof(T); }
    size_t GetAlignment() const final { return alignof(T); }
 };
+
+// Defined out of class: lcc (EDG) does not emit an in-class defaulted virtual
+// destructor for the explicit instantiations in RField.cxx.
+template <typename T>
+RSimpleField<T>::~RSimpleField() = default;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Template specializations for concrete C++ types
