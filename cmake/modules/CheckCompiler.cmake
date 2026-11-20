@@ -8,7 +8,7 @@
 #  CheckCompiler.cmake
 #---------------------------------------------------------------------------------------------------
 
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "(Apple|)Clang|GNU|Intel|MSVC")
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "(Apple|)Clang|GNU|Intel|MSVC|LCC")
   message(WARNING "Unsupported compiler: ${CMAKE_CXX_COMPILER_ID}.")
 endif()
 

@@ -97,6 +97,13 @@ if(CMAKE_COMPILER_IS_GNUCXX)
     set(ASAN_EXTRA_EXE_LINKER_FLAGS "-fsanitize=address -z undefs -Wl,--undefined=__asan_default_options -Wl,--undefined=__lsan_default_options -Wl,--undefined=__lsan_default_suppressions")
   endif()
 
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL LCC)
+  # MCST lcc (e2k): gcc-compatible driver, but CMake reports it as "LCC".
+  # Warnings are left at lcc defaults (its EDG front end is very verbose).
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe -fsigned-char -fsized-deallocation")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pipe")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined -Wl,--hash-style=\"both\"")
+
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe ${FP_MATH_FLAGS} -Wall -W -Woverloaded-virtual -fsigned-char -fsized-deallocation")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pipe -Wall -W")
