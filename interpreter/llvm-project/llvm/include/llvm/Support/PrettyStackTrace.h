@@ -113,6 +113,9 @@ namespace llvm {
   /// CrashRecoveryContext.
   LLVM_ABI void RestorePrettyStackState(const void *State);
 
+  LLVM_ABI bool GetPrintStack();
+  LLVM_ABI void SetPrintStack( bool flag);
+
 } // end namespace llvm
 
 #endif

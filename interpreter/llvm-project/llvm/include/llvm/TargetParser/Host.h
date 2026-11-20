@@ -70,6 +70,7 @@ LLVM_ABI StringRef getHostCPUNameForS390x(StringRef ProcCpuinfoContent);
 LLVM_ABI StringRef getHostCPUNameForRISCV(StringRef ProcCpuinfoContent);
 LLVM_ABI StringRef getHostCPUNameForSPARC(StringRef ProcCpuinfoContent);
 LLVM_ABI StringRef getHostCPUNameForBPF();
+LLVM_ABI StringRef getHostCPUNameForElbrus(StringRef ProcCpuinfoContent);
 
 /// Helper functions to extract CPU details from CPUID on x86.
 namespace x86 {

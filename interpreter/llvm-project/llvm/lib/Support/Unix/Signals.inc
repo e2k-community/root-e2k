@@ -42,6 +42,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
@@ -830,6 +831,7 @@ static void zosbacktrace(raw_ostream &OS) {
 // On glibc systems we have the 'backtrace' function, which works nicely, but
 // doesn't demangle symbols.
 void llvm::sys::PrintStackTrace(raw_ostream &OS, int Depth) {
+  if (!llvm::GetPrintStack()) return;
 #if ENABLE_BACKTRACES
 #ifdef __MVS__
   zosbacktrace(OS);

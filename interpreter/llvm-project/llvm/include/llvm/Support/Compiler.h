@@ -115,7 +115,7 @@
 /// they are linked in to.
 
 #if LLVM_HAS_CPP_ATTRIBUTE(gnu::visibility) && defined(__GNUC__) &&            \
-    !defined(__clang__)
+    !defined(__clang__) && !defined(__LCC__)
 #define LLVM_ATTRIBUTE_VISIBILITY_HIDDEN [[gnu::visibility("hidden")]]
 #define LLVM_ATTRIBUTE_VISIBILITY_DEFAULT [[gnu::visibility("default")]]
 #elif __has_attribute(visibility)
@@ -666,7 +666,7 @@ void AnnotateIgnoreWritesEnd(const char *file, int line);
 /// appropriate for use with a pointer, integer, or small aggregation of
 /// pointers and integers.
 #if LLVM_ENABLE_THREADS
-#if __has_feature(cxx_thread_local) || defined(_MSC_VER)
+#if __has_feature(cxx_thread_local) || defined(_MSC_VER) || defined(__LCC__)
 #define LLVM_THREAD_LOCAL thread_local
 #else
 // Clang, GCC, and other compatible compilers used __thread prior to C++11 and

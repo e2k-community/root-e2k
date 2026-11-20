@@ -264,6 +264,14 @@ public:
     return Res;
   }
 
+  bool isLastArg( OptSpecifier IdT, OptSpecifier IdF) const {
+      bool r = false;
+      if ( const Arg *A = getLastArg( IdT, IdF) ) {
+          r = A->getOption().matches( IdT);
+      }
+      return r;
+  }
+
   /// Return the last argument matching \p Id, or null. Do not "claim" the
   /// option (don't mark it as having been used).
   template <typename... OptSpecifiers>

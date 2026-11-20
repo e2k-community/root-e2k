@@ -60,6 +60,9 @@ public:
     bpfeb,       // eBPF or extended BPF or 64-bit BPF (big endian)
     csky,        // CSKY: csky
     dxil,        // DXIL 32-bit DirectX bytecode
+    e2k32,       // Elbrus: e2k32
+    e2k64,       // Elbrus: e2k64
+    e2k128,      // Elbrus: e2k128
     hexagon,     // Hexagon: hexagon
     loongarch32, // LoongArch (32-bit): loongarch32
     loongarch64, // LoongArch (64-bit): loongarch64
@@ -154,6 +157,23 @@ public:
     AArch64SubArch_arm64e,
     AArch64SubArch_arm64ec,
     AArch64SubArch_lfi,
+
+    E2KSubArch_v3,
+    E2KSubArch_v3_4c,
+    E2KSubArch_v4,
+    E2KSubArch_v4_8c,
+    E2KSubArch_v4_1cp,
+    E2KSubArch_v5,
+    E2KSubArch_v5_8c2,
+    E2KSubArch_v6,
+    E2KSubArch_v6_16c,
+    E2KSubArch_v6_2c3,
+    E2KSubArch_v6_12c,
+    E2KSubArch_v7,
+    E2KSubArch_v7_48c,
+    E2KSubArch_v7_8v7,
+    E2KSubArch_v7_e2k_v7p,
+    E2KSubArch_v7_e2k_v7d,
 
     KalimbaSubArch_v3,
     KalimbaSubArch_v4,
@@ -544,6 +564,16 @@ public:
   ///
   /// Note that this tests for 16-bit pointer width, and nothing else.
   LLVM_ABI bool isArch16Bit() const;
+
+  /// Test whether the architecture is 128-bit
+  ///
+  /// Note that this tests for 128-bit pointer width, and nothing else.
+  LLVM_ABI bool isArch128Bit() const;
+
+  /// Test whether the architecture is Elbrus
+  ///
+  /// Note that this tests the architecture for Elbrus, and nothing else.
+  LLVM_ABI bool isArchElbrus() const;
 
   /// Helper function for doing comparisons against version numbers included in
   /// the target triple.
@@ -1047,6 +1077,11 @@ public:
                : PointerWidth == 64;
   }
 
+  /// Tests whether the target is Elbrus.
+  bool isElbrus() const {
+    return getArch() == Triple::e2k32 || getArch() == Triple::e2k64 || getArch() == Triple::e2k128;
+  }
+
   /// Tests whether the target is 32-bit LoongArch.
   bool isLoongArch32() const { return getArch() == Triple::loongarch32; }
 
@@ -1282,6 +1317,14 @@ public:
   /// \returns A new triple with a 64-bit architecture or an unknown
   ///          architecture if no such variant can be found.
   LLVM_ABI llvm::Triple get64BitArchVariant() const;
+
+  /// Form a triple with a 128-bit variant of the current architecture.
+  ///
+  /// This can be used to move across "families" of architectures where useful.
+  ///
+  /// \returns A new triple with a 128-bit architecture or an unknown
+  ///          architecture if no such variant can be found.
+  LLVM_ABI llvm::Triple get128BitArchVariant() const;
 
   /// Form a triple with a big endian variant of the current architecture.
   ///

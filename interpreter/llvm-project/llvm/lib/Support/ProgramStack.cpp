@@ -25,7 +25,9 @@
 using namespace llvm;
 
 uintptr_t llvm::getStackPointer() {
-#if __GNUC__ || __has_builtin(__builtin_frame_address)
+// On e2k __builtin_frame_address does not point into the user data stack,
+// so use the address of a local variable instead.
+#if (__GNUC__ || __has_builtin(__builtin_frame_address)) && !defined(__e2k__)
   return (uintptr_t)__builtin_frame_address(0);
 #elif defined(_MSC_VER)
   return (uintptr_t)_AddressOfReturnAddress();
